@@ -12,7 +12,6 @@
 /* Procsss binary get and touch helper function */
 extern int time_independent_strcmp(char *a, char *b);
 extern void replyMemcachedBinaryHeaderForGetOrTouch(client *c, char *key, const size_t nkey, const size_t valuelen, const uint32_t flags, const int find);
-extern long md5_cmp_with_server(const char *user_input_pass);
 extern size_t getMemcachedValueLength(robj *o);
 extern void convertMemcachedRawCmd2DelCmd(client *c);
 extern void incrDecrMemcachedCommand(client *c, int incr);
@@ -22,6 +21,7 @@ extern void changeMemcachedArgvAndSet(client *c, const uint64_t cas, const uint3
 extern void memcachedSetGenericCommand(client *c, robj *key, robj *val, long long seconds, robj *ok_reply);
 extern void setMemcachedCasFlag2Value(const uint64_t cas, const uint32_t flags, robj *value);
 extern void releaseObjFreeSpace(robj *o, int need_cas_flag_header);
+extern sds sdsfromMemcachedSds(sds s, size_t cas_flag_size);
 /* Write an binary response to client */
 void replyMemcachedBinaryResponse(client *c, void *d, int hlen, int keylen, int dlen);
 /* parse the version and quit request command */
@@ -494,14 +494,8 @@ void replaceMemcachedCommand(client *c) {
 }
 
 static inline sds parseMemcachedStringObject(sds s) {
-    struct sdshdr32 *sh, *new_sh;
     serverAssert(sdslen(s) >= MEMCACHED_VALUE_ITEM_HEAD_LEN);
-
-    sh = (void*)(s-(sizeof(struct sdshdr32)));
-    new_sh = (void *)(s + MEMCACHED_VALUE_ITEM_HEAD_LEN - sizeof(struct sdshdr32));
-    new_sh->len = sdslen(s) - MEMCACHED_VALUE_ITEM_HEAD_LEN;
-    new_sh->alloc = sdsalloc(s) - MEMCACHED_VALUE_ITEM_HEAD_LEN;
-    return new_sh->buf;
+    return sdsfromMemcachedSds(s, MEMCACHED_VALUE_ITEM_HEAD_LEN);
 }
 
 /* append text request format is: 

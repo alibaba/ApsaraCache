@@ -6,6 +6,7 @@ extern void setProtocolError(const char *errstr, client *c, int pos);
 extern int time_independent_strcmp(char *a, char *b);
 extern int processInlineBuffer(client *c);
 extern int  processMultibulkBuffer(client *c);
+extern sds sdsfromMemcachedStringbuffer(const char *buf, size_t len, size_t cas_flag_size);
 extern struct memcachedCommand memcachedCommandTable[MEMCACHED_TEXT_REQUEST_NUM + MEMCACHED_BINARY_REQUEST_NUM]; 
 
 /* redis shared objects */
@@ -570,14 +571,7 @@ static inline int setNoReplyMaybe(client *c, token_t *tokens, const size_t ntoke
 /* Create memcached string object just for adding MEMCACHED_VALUE_ITEM_HEAD_LEN space for 
  * storing cas and flags */
 static robj *createMemcachedStringObject(const char *buf, size_t len) {
-    struct sdshdr32 *sh;
-    size_t total = len + MEMCACHED_VALUE_ITEM_HEAD_LEN;
-    sh = zmalloc(sizeof(struct sdshdr32) + total +1);
-    memcpy(sh->buf + MEMCACHED_VALUE_ITEM_HEAD_LEN, buf, len);
-    sh->len = total;
-    sh->alloc = total;
-    sh->buf[total] = '\0';
-    robj *o = createObject(OBJ_STRING, sh->buf);
+    robj *o = createObject(OBJ_STRING, sdsfromMemcachedStringbuffer(buf, len, MEMCACHED_VALUE_ITEM_HEAD_LEN));
     return o;
 }
 

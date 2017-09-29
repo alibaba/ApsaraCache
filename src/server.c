@@ -3404,6 +3404,18 @@ sds genRedisInfoString(char *section) {
                 (c->calls == 0) ? 0 : ((float)c->microseconds/c->calls));
         }
         dictReleaseIterator(di);
+        int numcommands = MEMCACHED_COMMAND_TABLE_SIZE / MEMCACHED_COMMAND_STRUCT_SIZE;;
+        for (j = 0; j < numcommands; j++) {
+            struct redisCommand *c = (struct redisCommand *)(memcachedCommandTable+j);
+
+            if (c->calls == 0) continue;
+            /*for ascii command, whose opcode is not equal PROTOCOL_BINARY_CMD_FAKE, its statistics data is already added to its binary command*/ 
+            if (j < MEMCACHED_TEXT_REQUEST_NUM && memcachedCommandTable[j].opcode != MEMCACHED_BINARY_CMD_FAKE) continue;
+            info = sdscatprintf(info,
+                "cmdstat_mem_%s:calls=%lld,usec=%lld,usec_per_call=%.2f\r\n",
+                c->name, c->calls, c->microseconds,
+                (c->calls == 0) ? 0 : ((float)c->microseconds/c->calls));
+        }
     }
 
     /* Cluster */
