@@ -33,7 +33,7 @@
 #include <math.h>
 #include <ctype.h>
 
-static void setProtocolError(const char *errstr, client *c, int pos);
+void setProtocolError(const char *errstr, client *c, int pos);
 
 /* Return the size consumed from the allocator, for the specified SDS string,
  * including internal fragmentation. This function is used in order to compute
@@ -1107,7 +1107,7 @@ int processInlineBuffer(client *c) {
 /* Helper function. Trims query buffer to make the function that processes
  * multi bulk requests idempotent. */
 #define PROTO_DUMP_LEN 128
-static void setProtocolError(const char *errstr, client *c, int pos) {
+void setProtocolError(const char *errstr, client *c, int pos) {
     if (server.verbosity <= LL_VERBOSE) {
         sds client = catClientInfoString(sdsempty(),c);
 
@@ -1284,6 +1284,31 @@ int processMultibulkBuffer(client *c) {
     return C_ERR;
 }
 
+/* Because we will porcess redis and memcached protocol,
+ * so we create two functions.
+ */
+int processRedisProtocolBuffer(client *c) {
+    /* Determine request type when unknown. */
+    int ret = C_ERR;
+    if (!c->reqtype) {
+        if (c->querybuf[0] == '*') {
+            c->reqtype = PROTO_REQ_MULTIBULK;
+        } else {
+            c->reqtype = PROTO_REQ_INLINE;
+        }
+    }
+
+    if (c->reqtype == PROTO_REQ_INLINE) {
+        ret = processInlineBuffer(c);
+    } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
+        ret = processMultibulkBuffer(c);
+    } else {
+        serverPanic("Unknown request type");
+    }
+    return ret;
+}
+
+
 /* This function is called every time, in the client structure 'c', there is
  * more query buffer to process, because we read more data from the socket
  * or because a client was blocked and later reactivated, so there could be
@@ -1305,21 +1330,12 @@ void processInputBuffer(client *c) {
          * The same applies for clients we want to terminate ASAP. */
         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
-        /* Determine request type when unknown. */
-        if (!c->reqtype) {
-            if (c->querybuf[0] == '*') {
-                c->reqtype = PROTO_REQ_MULTIBULK;
-            } else {
-                c->reqtype = PROTO_REQ_INLINE;
-            }
-        }
-
-        if (c->reqtype == PROTO_REQ_INLINE) {
-            if (processInlineBuffer(c) != C_OK) break;
-        } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
-            if (processMultibulkBuffer(c) != C_OK) break;
-        } else {
-            serverPanic("Unknown request type");
+        int ret = server.protocolParseProcess(c);
+        if (ret == C_ERR) {
+            break;
+        } else if (ret == C_AGAIN) { 
+            resetClient(c);
+            continue;
         }
 
         /* Multibulk processing could see a <= 0 length. */
