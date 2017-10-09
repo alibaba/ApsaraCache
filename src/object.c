@@ -393,6 +393,11 @@ robj *tryObjectEncoding(robj *o) {
      * they are not handled. We handle them only as values in the keyspace. */
      if (o->refcount > 1) return o;
 
+    /* When recover data from aof, don't let the fake client command do INT encoding */
+    if (server.protocol == MEMCACHED) {
+        return o;
+    }
+
     /* Check if we can represent this string as a long integer.
      * Note that we are sure that a string larger than 20 chars is not
      * representable as a 32 nor 64 bit integer. */

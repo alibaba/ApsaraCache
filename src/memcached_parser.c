@@ -32,6 +32,9 @@ static void addMemcachedBinaryHeader(client *c, uint16_t err, uint8_t hdr_len, u
 robj* createMemcachedBinaryResponse(client *c, void *d, int hlen, int keylen, int dlen);
 /* this function is used to create memcached binary shared objects with errors*/
 void replyMemcachedBinaryError(client *c, memcachedBinaryResponseStatus err,  const char *errstr);
+static inline robj *createMemcachedRawStringObject(const char *ptr, size_t len) {
+    return createRawStringObject(ptr, len);
+}
 /*
  * create memcached ascii shared objects
  */
@@ -94,7 +97,7 @@ void createMemcachedSharedObjects(void) {
 
 robj* createMemcachedBinaryResponse(client *c, void *d, int hlen, int keylen, int dlen) {
     dlen = dlen < 0 ? 0 : dlen;
-    robj* biob = createStringObject(NULL, sizeof(memcachedBinaryResponseHeader) + dlen);
+    robj* biob = createMemcachedRawStringObject(NULL, sizeof(memcachedBinaryResponseHeader) + dlen);
     addMemcachedBinaryHeader(c, 0, hlen, keylen, dlen, biob->ptr);
     if (d != NULL && dlen > 0) {
         memcpy((char *)biob->ptr + sizeof(memcachedBinaryResponseHeader), d, dlen);
@@ -602,7 +605,7 @@ int parseMemcachedGetCommand(client *c, const size_t reqlen, void *item_tokens, 
         }
 
         while (key_token->length > 0) {
-            c->argv[c->argc++] = createStringObject(key_token->value, key_token->length);   
+            c->argv[c->argc++] = createMemcachedRawStringObject(key_token->value, key_token->length);   
             ++key_token;
         }
 
@@ -676,8 +679,8 @@ int parseMemcachedUpdateCommand(client *c, const size_t len, void *item_tokens, 
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*multibulklen);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
-    c->argv[c->argc++] = createStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
     c->argv[c->argc++] = createStringObjectFromLongLong(flags); 
     c->argv[c->argc++] = createStringObjectFromLongLong(realTime(expire_time_int)); 
     if (handle_cas) {
@@ -734,8 +737,8 @@ int parseMemcachedArithmeticCommand(client *c, const size_t len, void *item_toke
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*3);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
-    c->argv[c->argc++] = createStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
     // tricky skill
     c->argv[c->argc++] = createStringObjectFromLongLong(INITIAL_VAL); 
     c->argv[c->argc - 1]->ptr = (void *)delta; 
@@ -778,8 +781,8 @@ int parseMemcachedDeleteCommand(client *c, const size_t len, void *item_tokens, 
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*2);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
-    c->argv[c->argc++] = createStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
     sdsrange(c->querybuf, pos, -1);
     return C_OK;
 }
@@ -812,8 +815,8 @@ int parseMemcachedMinfoCommand(client *c, const size_t len, void *item_tokens, c
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*2);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
-    c->argv[c->argc++] = createStringObject(section, length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(section, length);
     sdsrange(c->querybuf, pos, -1);
     return C_OK;
 }
@@ -850,7 +853,7 @@ int parseMemcachedMscanCommand(client *c, const size_t len, void *item_tokens, c
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*4);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
     c->argv[c->argc++] = createStringObjectFromLongLong(cursor); 
     c->argv[c->argc++] = createStringObjectFromLongLong(count); 
 
@@ -899,8 +902,8 @@ int parseMemcachedTouchCommand(client *c, const size_t len, void *item_tokens, c
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*3);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
-    c->argv[c->argc++] = createStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length);
     c->argv[c->argc++] = createStringObjectFromLongLong(realTime(exptime_int)); 
     sdsrange(c->querybuf, pos, -1);
     return C_OK;
@@ -934,7 +937,7 @@ int parseMemcachedFlushCommand(client *c, const size_t len, void *itokens, const
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*2);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
     c->argv[c->argc++] = createStringObjectFromLongLong(realTime(exptime_int)); 
     sdsrange(c->querybuf, pos, -1);
     return C_OK;
@@ -958,7 +961,7 @@ int parseMemcachedVersionQuitCommand(client *c, const size_t len, void *item_tok
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *));
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
     sdsrange(c->querybuf, pos, -1);
     return C_OK;
 }
@@ -981,9 +984,9 @@ int parseMemcachedAuthCommand(client *c, const size_t len, void *item_tokens, co
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *) * 3);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(tokens[0].value, tokens[0].length);
-    c->argv[c->argc++] = createStringObject(tokens[1].value, tokens[1].length);
-    c->argv[c->argc++] = createStringObject(tokens[2].value, tokens[2].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[0].value, tokens[0].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[1].value, tokens[1].length);
+    c->argv[c->argc++] = createMemcachedRawStringObject(tokens[2].value, tokens[2].length);
     sdsrange(c->querybuf, pos, -1);
     return C_OK;
 }
@@ -1055,8 +1058,8 @@ static void memcachedBinaryReadingSetRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*5);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + BIN_REQ_SET_HEADER_LEN,  keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + BIN_REQ_SET_HEADER_LEN,  keylen);
     c->argv[c->argc++] = createStringObjectFromLongLong(ntohl(header->message.body.flags)); 
     c->argv[c->argc++] = createStringObjectFromLongLong(realTime(ntohl(header->message.body.expiration))); 
     c->argv[c->argc++] = createMemcachedStringObject(c->querybuf + BIN_REQ_SET_HEADER_LEN + keylen, bodylen - (extlen + keylen)); 
@@ -1071,8 +1074,8 @@ static void memcachedBinaryReadingAppendRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*3);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + BIN_REQ_APPEND_HEADER_LEN,  keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + BIN_REQ_APPEND_HEADER_LEN,  keylen);
     c->argv[c->argc++] = createMemcachedStringObject(c->querybuf + BIN_REQ_APPEND_HEADER_LEN + keylen, bodylen - keylen); 
 }
 
@@ -1080,8 +1083,8 @@ static void memcachedBinaryReadingGetRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*2);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + sizeof(memcachedBinaryRequestGet), c->binary_header.request.keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + sizeof(memcachedBinaryRequestGet), c->binary_header.request.keylen);
 }
 
 #define BIN_REQ_TOUCH_HEADER_LEN  sizeof(((memcachedBinaryRequestTouch *)16)->bytes)
@@ -1092,8 +1095,8 @@ static void memcachedBinaryReadTouchRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*3);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + BIN_REQ_TOUCH_HEADER_LEN, c->binary_header.request.keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + BIN_REQ_TOUCH_HEADER_LEN, c->binary_header.request.keylen);
     c->argv[c->argc++] = createStringObjectFromLongLong(realTime(ntohl(header->message.body.expiration))); 
 }
 
@@ -1105,8 +1108,8 @@ static void memcachedBinaryReadingDelRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *) * 2);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + sizeof(memcachedBinaryRequestDelete), c->binary_header.request.keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + sizeof(memcachedBinaryRequestDelete), c->binary_header.request.keylen);
 }
 
 #define BIN_REQ_INCR_HEADER_LEN  sizeof(((memcachedBinaryRequestIncr *)16)->bytes)
@@ -1115,8 +1118,8 @@ static void memcachedBinaryReadingIncrDecrRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *)*5);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + BIN_REQ_INCR_HEADER_LEN, c->binary_header.request.keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + BIN_REQ_INCR_HEADER_LEN, c->binary_header.request.keylen);
     /* createStringObjectFromLongLong use long long as it's parameter
      * but we use uint64_t, so it has the risk to overflow
      * we do a tricky skill to avoid this */
@@ -1138,7 +1141,7 @@ static void binaryReadFlushRequest(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *) * 2);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
     c->argv[c->argc++] = createStringObjectFromLongLong(expiration); 
 }
 
@@ -1150,10 +1153,10 @@ static void memcachedBinaryCompleteSaslAuthData(client *c) {
     if (c->argv) zfree(c->argv);    
     c->argv = zmalloc(sizeof(robj *) * multibulk);
     c->argc = 0;
-    c->argv[c->argc++] = createStringObject(c->cmd->name, strlen(c->cmd->name));
-    c->argv[c->argc++] = createStringObject(c->querybuf + sizeof(memcachedBinaryRequestHeader), keylen);
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->cmd->name, strlen(c->cmd->name));
+    c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + sizeof(memcachedBinaryRequestHeader), keylen);
     if (bodylen > 0) {
-        c->argv[c->argc++] = createStringObject(c->querybuf + sizeof(memcachedBinaryRequestHeader) + keylen, bodylen);
+        c->argv[c->argc++] = createMemcachedRawStringObject(c->querybuf + sizeof(memcachedBinaryRequestHeader) + keylen, bodylen);
     }
 }
 
@@ -1649,7 +1652,7 @@ void incrDecrMemcachedCommand(client *c, int incr) {
                 replyMemcachedBinaryError(c, MEMCACHED_BINARY_RESPONSE_KEY_ENOENT, NULL);
             } else {
                 initial = (uint64_t)c->argv[3]->ptr;
-                robj *o = createStringObject("", 0);
+                robj *o = createMemcachedRawStringObject("", 0);
                 incrDecrMemcachedSetValue(1, 0, initial, 0, 0, o); 
                 initial = htonll(initial);
                 c->binary_header.request.cas = 1;
@@ -1742,7 +1745,10 @@ void memcachedBinaryCompleteSaslAuth(client *c) {
 
     switch (c->binary_header.request.opcode) {
         case MEMCACHED_BINARY_CMD_SASL_AUTH:
-            if (passwd != NULL && (passwd < challenge + sdslen(c->argv[2]->ptr)) && !time_independent_strcmp(passwd + 1, server.requirepass)) {
+            if (server.requirepass == NULL || 
+                    (passwd != NULL && (passwd < challenge + sdslen(c->argv[2]->ptr)) && 
+                    server.requirepass != NULL &&
+                    !time_independent_strcmp(passwd + 1, server.requirepass))) {
                 result = 0;
             }
             break;

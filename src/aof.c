@@ -542,8 +542,13 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
         /* Translate SET [EX seconds][PX milliseconds] to SET and PEXPIREAT */
         buf = catAppendOnlyGenericCommand(buf,3,argv);
         for (i = 3; i < argc; i ++) {
-            if (!strcasecmp(argv[i]->ptr, "ex")) exarg = argv[i+1];
-            if (!strcasecmp(argv[i]->ptr, "px")) pxarg = argv[i+1];
+            if (server.protocol == REDIS) {
+                if (!strcasecmp(argv[i]->ptr, "ex")) exarg = argv[i+1];
+                if (!strcasecmp(argv[i]->ptr, "px")) pxarg = argv[i+1];
+            } else {
+                if (argv[i]->encoding == OBJ_ENCODING_RAW && !strcasecmp(argv[i]->ptr, "ex")) exarg = argv[i+1];
+                if (argv[i]->encoding == OBJ_ENCODING_RAW && !strcasecmp(argv[i]->ptr, "px")) pxarg = argv[i+1];
+            }
         }
         serverAssert(!(exarg && pxarg));
         if (exarg)

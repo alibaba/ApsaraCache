@@ -1289,7 +1289,7 @@ struct redisCommand {
 };
 
 /*just deal 18 memcached commands*/
-#define MEMCACHED_TEXT_REQUEST_NUM 18
+#define MEMCACHED_TEXT_REQUEST_NUM 16
 #define MEMCACHED_BINARY_REQUEST_NUM 35
 #define MEMCACHED_MAX_OPCODE 0x22
 /*define memcached text request parser help function*/

@@ -1480,6 +1480,7 @@ void initServerConfig(void) {
     server.protocol = REDIS;
     server.protocol_str = PROTOCOL_REDIS_STR;
     server.protocolParseProcess = processRedisProtocolBuffer; 
+    server.max_memcached_read_request_length = MAX_MEMCACHED_READ_REQUEST_LENGTH_DEFAULT;
 
     unsigned int lruclock = getLRUClock();
     atomicSet(server.lruclock,lruclock);
@@ -2037,7 +2038,7 @@ void populateCommandTable(void) {
     }
 
     for (j = 0; j < numcommands; j++) {
-        struct redisCommand *c = redisCommandTable+j;
+        struct redisCommand *c = (struct redisCommand *)(commandTable + j * cmss); 
         char *f = c->sflags;
         int retval1, retval2, binary = 0;
 
@@ -2074,7 +2075,7 @@ void populateCommandTable(void) {
 
         /* Populate an additional dictionary that will be unaffected
          * by rename-command statements in redis.conf. */
-        retval2 = dictAdd(server.orig_commands, sdsnew(c->name), c);
+        retval2 = (server.protocol == REDIS) ? dictAdd(server.orig_commands, sdsnew(c->name), c) : DICT_OK;
         serverAssert(retval1 == DICT_OK && retval2 == DICT_OK);
     }
 }
@@ -2457,7 +2458,7 @@ int processCommand(client *c) {
         /* Running mode is memcached, but use redis protocol request */
         if (!(c->flags & CLIENT_MASTER) && 
             (c->reqtype == PROTO_REQ_INLINE || c->reqtype == PROTO_REQ_MULTIBULK) &&
-            (c->cmd->proc != pingCommand && c->cmd->proc != authCommand)) {
+            (c->cmd->flags & CMD_WRITE)) {
             addReplyError(c, "operation not permitted, invalid requst.");
             return C_OK;
         }
@@ -3404,12 +3405,13 @@ sds genRedisInfoString(char *section) {
                 (c->calls == 0) ? 0 : ((float)c->microseconds/c->calls));
         }
         dictReleaseIterator(di);
+
         int numcommands = MEMCACHED_COMMAND_TABLE_SIZE / MEMCACHED_COMMAND_STRUCT_SIZE;;
         for (j = 0; j < numcommands; j++) {
             struct redisCommand *c = (struct redisCommand *)(memcachedCommandTable+j);
 
             if (c->calls == 0) continue;
-            /*for ascii command, whose opcode is not equal PROTOCOL_BINARY_CMD_FAKE, its statistics data is already added to its binary command*/ 
+            /* for ascii command, whose opcode is not equal PROTOCOL_BINARY_CMD_FAKE, its statistics data is already added to its binary command */ 
             if (j < MEMCACHED_TEXT_REQUEST_NUM && memcachedCommandTable[j].opcode != MEMCACHED_BINARY_CMD_FAKE) continue;
             info = sdscatprintf(info,
                 "cmdstat_mem_%s:calls=%lld,usec=%lld,usec_per_call=%.2f\r\n",

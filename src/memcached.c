@@ -287,7 +287,7 @@ void authMemcachedCommand(client *c) {
         return;
     }
 
-    if (time_independent_strcmp(passwd->ptr, server.requirepass) != 0) {
+    if (server.requirepass != NULL && time_independent_strcmp(passwd->ptr, server.requirepass) != 0) {
         c->authenticated = 0;
         addReplyMemcached(c, memcached_shared.invalid_pw_or_uname);
         return;
@@ -800,7 +800,6 @@ void gatMemcachedCommand(client *c) {
 
 /* we just support PLAIN; */
 void saslListMechsMemcachedCommand(client *c) {
-    /* initSaslConn(c); */
     replyMemcachedBinaryResponse(c, (void *)SASL_PLAIN, 0, 0, SASL_PLAIN_LEN);
 }
 
