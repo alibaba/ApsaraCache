@@ -88,8 +88,8 @@ Enjoy!
 
 Documentation
 ------------------
-* [Documentation Home]()
-* [Frequently Asked Questions]()
+* [Documentation Home](https://github.com/alibaba/ApsaraCache/wiki/ApsaraCache-document)
+* [Frequently Asked Questions](https://github.com/alibaba/ApsaraCache/wiki/frequently-ask-questions)
 
 Contributing
 ------------------
