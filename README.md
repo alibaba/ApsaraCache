@@ -6,7 +6,7 @@ ApsaraCache is based on the Redis official release 4.0 and has many features and
 There are many features in ApsaraCache, the following two are included in this release and the other features will be gradually released in the subsequent, so stay tuned.
 
 * ApsaraCache supports two main protocols of Memcached: the classic ASCII, and the newer binary. You can use ApsaraCache just as Memcached, and no client code need to be modified. You can persist your data by using ApsaraCache in Memcached mode just like Redis.
-* In short connection scenario, ApsaraCache makes 30% performance increase compared with the open source version.
+* In short connection scenario, ApsaraCache makes 30% performance increase compared with the vanilla version.
 
 
 Building ApsaraCache
