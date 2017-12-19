@@ -505,8 +505,17 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
     /* If we reached the memory limit configured via maxmemory, commands that
      * could enlarge the memory usage are not allowed, but only if this is the
      * first write in the context of this script, otherwise we can't stop
-     * in the middle. */
+     * in the middle.
+     *
+     * if the lua caller is in multi/exec state, redis won't free memory
+     * actively because memory elimination may generate some del commands with
+     * an opinfo command header in the multi/exec block. this may cause a
+     * backward compatability problem in the situation where an official redis
+     * replicates from an aof-binlog redis, the reason is that official redis
+     * can't identify opinfo command and thus the multi/exec transaction
+     * recieved from aof-binlog master is discarded eventually. */
     if (server.maxmemory && server.lua_write_dirty == 0 &&
+        !(server.lua_caller->flags & CLIENT_MULTI) &&
         (cmd->flags & CMD_DENYOOM))
     {
         if (freeMemoryIfNeeded() == C_ERR) {
@@ -1414,20 +1423,30 @@ void evalGenericCommand(client *c, int evalsha) {
      * flush our cache of scripts that can be replicated as EVALSHA, while
      * for AOF we need to do so every time we rewrite the AOF file. */
     if (evalsha && !server.lua_replicate_commands) {
-        if (!replicationScriptCacheExists(c->argv[1]->ptr)) {
-            /* This script is not in our script cache, replicate it as
-             * EVAL, then add it into the script cache, as from now on
-             * slaves and AOF know about it. */
-            robj *script = dictFetchValue(server.lua_scripts,c->argv[1]->ptr);
+        robj *script = dictFetchValue(server.lua_scripts,c->argv[1]->ptr);
 
-            replicationScriptCacheAdd(c->argv[1]->ptr);
-            serverAssertWithInfo(c,NULL,script != NULL);
-            rewriteClientCommandArgument(c,0,
-                resetRefCount(createStringObject("EVAL",4)));
-            rewriteClientCommandArgument(c,1,script);
-            forceCommandPropagation(c,PROPAGATE_REPL|PROPAGATE_AOF);
-        }
+        serverAssertWithInfo(c,NULL,script != NULL);
+        rewriteClientCommandArgument(c,0,
+            resetRefCount(createStringObject("EVAL",4)));
+        rewriteClientCommandArgument(c,1,script);
+        forceCommandPropagation(c,PROPAGATE_REPL|PROPAGATE_AOF);
     }
+
+    // if (evalsha && !server.lua_replicate_commands) {
+    //     if (!replicationScriptCacheExists(c->argv[1]->ptr)) {
+    //         /* This script is not in our script cache, replicate it as
+    //          * EVAL, then add it into the script cache, as from now on
+    //          * slaves and AOF know about it. */
+    //         robj *script = dictFetchValue(server.lua_scripts,c->argv[1]->ptr);
+
+    //         replicationScriptCacheAdd(c->argv[1]->ptr);
+    //         serverAssertWithInfo(c,NULL,script != NULL);
+    //         rewriteClientCommandArgument(c,0,
+    //                                      resetRefCount(createStringObject("EVAL",4)));
+    //         rewriteClientCommandArgument(c,1,script);
+    //         forceCommandPropagation(c,PROPAGATE_REPL|PROPAGATE_AOF);
+    //     }
+    // }
 }
 
 void evalCommand(client *c) {

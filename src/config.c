@@ -30,9 +30,18 @@
 
 #include "server.h"
 #include "cluster.h"
+#include "aof_buf_queue.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
+
+#define LOOSE_PREFIX "loose_"
+#define NO_LOOSE_PREFIX "#no_loose_"
+
+#define load_config_no_loose_cmp(_name)                         \
+    else if ((!strcasecmp(argv[0], _name) ||                    \
+              !strcasecmp(argv[0], NO_LOOSE_PREFIX""_name)) &&  \
+             argc == 2)
 
 /*-----------------------------------------------------------------------------
  * Config file name-value maps.
@@ -85,6 +94,7 @@ configEnum supervised_mode_enum[] = {
 };
 
 configEnum aof_fsync_enum[] = {
+    {"bio", AOF_FSYNC_BIO_WRITE},
     {"everysec", AOF_FSYNC_EVERYSEC},
     {"always", AOF_FSYNC_ALWAYS},
     {"no", AOF_FSYNC_NO},
@@ -457,7 +467,7 @@ void loadServerConfigFromString(char *config) {
         } else if (!strcasecmp(argv[0],"appendfsync") && argc == 2) {
             server.aof_fsync = configEnumGetValue(aof_fsync_enum,argv[1]);
             if (server.aof_fsync == INT_MIN) {
-                err = "argument must be 'no', 'always' or 'everysec'";
+                err = "argument must be 'no', 'bio', 'always' or 'everysec'";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"auto-aof-rewrite-percentage") &&
@@ -729,6 +739,87 @@ void loadServerConfigFromString(char *config) {
         } else if (!strcasecmp(argv[0], "protocol") && argc == 2) {
             //directive: protocol memcached
             server.protocol = (!strcasecmp(argv[1], "memcached") || !strcasecmp(argv[1], "memcache")) ? MEMCACHED : REDIS;
+        } load_config_no_loose_cmp("aof-max-size") {
+            server.aof_max_size = memtoll(argv[1], NULL);
+            if(server.aof_max_size < REDIS_AOF_MIN_SIZE) {
+                server.aof_max_size = REDIS_AOF_MIN_SIZE;
+            }
+        } load_config_no_loose_cmp("cron-bgsave-rewrite-percentage") {
+            server.cron_bgsave_rewrite_perc = atoi(argv[1]);
+            if (server.cron_bgsave_rewrite_perc < 0) {
+                err = "Invalid negative percentage for cron bgsave";
+                goto loaderr;
+            }
+        } load_config_no_loose_cmp("cron-bgsave-rewrite-min-size") {
+            server.cron_bgsave_rewrite_min_size = memtoll(argv[1], NULL);
+        } load_config_no_loose_cmp("auto-cron-bgsave") {
+            if ((server.auto_cron_bgsave_state = yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+        } load_config_no_loose_cmp("auto-purge-aof") {
+            if ((server.auto_purge_aof = yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+        } load_config_no_loose_cmp("aof-psync-state") {
+            if ((server.aof_psync_state = yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+        } load_config_no_loose_cmp("repl-stream-db") {
+            server.rsi_config->repl_stream_db = atoi(argv[1]);
+        } load_config_no_loose_cmp("repl-id") {
+            memcpy(server.rsi_config->replid, argv[1], CONFIG_RUN_ID_SIZE);
+            server.rsi_config->replid[CONFIG_RUN_ID_SIZE] = '\0';
+        } load_config_no_loose_cmp("repl-offset") {
+            server.rsi_config->repl_offset = atoll(argv[1]);
+        } load_config_no_loose_cmp("repl-id2") {
+            memcpy(server.rsi_config->replid2, argv[1], CONFIG_RUN_ID_SIZE);
+            server.rsi_config->replid2[CONFIG_RUN_ID_SIZE] = '\0';
+        } load_config_no_loose_cmp("repl-second-replid-opid") {
+            server.rsi_config->second_replid_opid = atoll(argv[1]);
+        } load_config_no_loose_cmp("rdb-save-incremental-fsync") {
+            if ((server.rdb_save_incremental_fsync =
+                 yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+        } load_config_no_loose_cmp("aof-buf-queue-max-size") {
+            server.aof_buf_limit = memtoll(argv[1],NULL);
+            server.aof_buf_limit = (server.aof_buf_limit <
+                                    REDIS_AOF_BUF_QUEUE_MIN_LIMIT) ?
+                REDIS_AOF_BUF_QUEUE_MIN_LIMIT : server.aof_buf_limit;
+        } load_config_no_loose_cmp("opdel-source-timeout") {
+            server.opdel_source_timeout = atoi(argv[1]);
+            if (server.opdel_source_timeout < 0) {
+                err = "Invalid timeout for opdel source";
+                goto loaderr;
+            }
+        } load_config_no_loose_cmp("opget-max-count") {
+            server.opget_max_count = atoi(argv[1]);
+            if (server.opget_max_count < 0) {
+                err = "Invalid maximum count value for opget command";
+                goto loaderr;
+            }
+            if (server.opget_max_count < 10) server.opget_max_count = 10;
+        } load_config_no_loose_cmp("opget-master-min-slaves") {
+            server.opget_master_min_slaves = atoi(argv[1]);
+            if (server.opget_master_min_slaves < 0) {
+                err = "Invalid value for opget-master-min-slaves";
+                goto loaderr;
+            }
+        } load_config_no_loose_cmp("server-id") {
+            robj *tmp_server_id_obj = createStringObject(argv[1],
+                                                         sdslen(argv[1]));
+            long long tmp_server_id = 0;
+            if (getLongLongFromObject(tmp_server_id_obj,
+                                      &tmp_server_id) != C_OK
+                || tmp_server_id > LONG_MAX || tmp_server_id <= 0) {
+                err = "Invalid server-id or server-id bigger than INT_MAX";
+                goto loaderr;
+            }
+            server.server_id = tmp_server_id;
+            decrRefCount(tmp_server_id_obj);
+        } else if (!strncasecmp(argv[0],LOOSE_PREFIX,strlen(LOOSE_PREFIX)) ||
+                   !strncasecmp(argv[0],NO_LOOSE_PREFIX,strlen(NO_LOOSE_PREFIX))) {
+            /* Ignore config parameters start with LOOSE_PREFIX or NO_LOOSE_PREFIX */
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
         }
@@ -823,6 +914,9 @@ void loadServerConfig(char *filename, char *options) {
 #define config_set_special_field(_name) \
     } else if (!strcasecmp(c->argv[2]->ptr,_name)) {
 
+#define config_set_no_loose_field(_name)                                \
+    } else if (!strcasecmp(c->argv[2]->ptr,_name) || !strcasecmp(c->argv[2]->ptr,NO_LOOSE_PREFIX""_name)) {
+
 #define config_set_else } else
 
 void configSetCommand(client *c) {
@@ -832,6 +926,7 @@ void configSetCommand(client *c) {
     serverAssertWithInfo(c,c->argv[2],sdsEncodedObject(c->argv[2]));
     serverAssertWithInfo(c,c->argv[3],sdsEncodedObject(c->argv[3]));
     o = c->argv[3];
+    int sync_mode = -1;
 
     if (0) { /* this starts the config_set macros else-if chain. */
 
@@ -1147,8 +1242,58 @@ void configSetCommand(client *c) {
     } config_set_enum_field(
       "maxmemory-policy",server.maxmemory_policy,maxmemory_policy_enum) {
     } config_set_enum_field(
-      "appendfsync",server.aof_fsync,aof_fsync_enum) {
-
+        "appendfsync",sync_mode,aof_fsync_enum) {
+        if (enableOrDisableAofBioWrite(c, sync_mode) == C_ERR) {
+            return;
+        }
+    } config_set_no_loose_field("aof-max-size") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.aof_max_size = ll;
+        if(server.aof_max_size < REDIS_AOF_MIN_SIZE) server.aof_max_size = REDIS_AOF_MIN_SIZE;
+    } config_set_no_loose_field("cron-bgsave-rewrite-percentage") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.cron_bgsave_rewrite_perc = ll;
+    } config_set_no_loose_field("cron-bgsave-rewrite-min-size") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.cron_bgsave_rewrite_min_size= ll;
+    } config_set_no_loose_field("auto-cron-bgsave") {
+        int enable = yesnotoi(o->ptr);
+        if (enable == -1) goto badfmt;
+        server.auto_cron_bgsave_state= enable;
+    } config_set_no_loose_field("auto-purge-aof") {
+        int enable = yesnotoi(o->ptr);
+        if (enable == -1) goto badfmt;
+        server.auto_purge_aof = enable;
+    } config_set_no_loose_field("aof-psync-state") {
+        int enable = yesnotoi(o->ptr);
+        if (enable == -1) goto badfmt;
+        server.aof_psync_state = enable;
+    } config_set_no_loose_field("rdb-save-incremental-fsync") {
+        int yn = yesnotoi(o->ptr);
+        if (yn == -1) goto badfmt;
+        server.rdb_save_incremental_fsync = yn;
+    } config_set_no_loose_field("aof-buf-queue-max-size") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.aof_buf_limit = ll;
+        server.aof_buf_limit = (server.aof_buf_limit <
+                                REDIS_AOF_BUF_QUEUE_MIN_LIMIT) ?
+            REDIS_AOF_BUF_QUEUE_MIN_LIMIT : server.aof_buf_limit;
+    } config_set_no_loose_field("opdel-source-timeout") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.opdel_source_timeout = ll;
+    } config_set_no_loose_field("opget-max-count") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.opget_max_count = (ll < 10 ? 10 : ll);
+    } config_set_no_loose_field("opget-master-min-slaves") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.opget_master_min_slaves = ll;
+    } config_set_no_loose_field("server-id") {
+        if (getLongLongFromObject(o,&ll) == C_ERR || ll < 0) goto badfmt;
+        server.server_id = ll;
+        sds client_info = catClientInfoString(sdsempty(),c);
+        serverLog(LL_WARNING, "server-id changed to %lld by client %s",
+                  server.server_id, client_info);
+        sdsfree(client_info);
     /* Everyhing else is an error... */
     } config_set_else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
@@ -1329,6 +1474,29 @@ void configGetCommand(client *c) {
             server.aof_fsync,aof_fsync_enum);
     config_get_enum_field("syslog-facility",
             server.syslog_facility,syslog_facility_enum);
+
+    config_get_numerical_field("aof-max-size", server.aof_max_size);
+    config_get_numerical_field("cron-bgsave-rewrite-percentage",
+                               server.cron_bgsave_rewrite_perc);
+    config_get_numerical_field("cron-bgsave-rewrite-min-size",
+                               server.cron_bgsave_rewrite_min_size);
+    config_get_bool_field("auto-cron-bgsave",
+                          server.auto_cron_bgsave_state);
+    config_get_bool_field("auto-purge-aof",
+                          server.auto_purge_aof);
+    config_get_bool_field("rdb-save-incremental-fsync",
+                          server.rdb_save_incremental_fsync);
+    config_get_numerical_field("aof-buf-queue-max-size",
+                               server.aof_buf_limit);
+    config_get_bool_field("aof-psync-state",
+                          server.aof_psync_state);
+    config_get_numerical_field("opdel-source-timeout",
+                               server.opdel_source_timeout);
+    config_get_numerical_field("opget-max-count",
+                               server.opget_max_count);
+    config_get_numerical_field("opget-master-min-slaves",
+                               server.opget_master_min_slaves);
+    config_get_numerical_field("server-id",server.server_id);
 
     /* Everything we can't handle with macros follows. */
 
@@ -2043,6 +2211,49 @@ int rewriteConfig(char *path) {
     rewriteConfigYesNoOption(state,"lazyfree-lazy-expire",server.lazyfree_lazy_expire,CONFIG_DEFAULT_LAZYFREE_LAZY_EXPIRE);
     rewriteConfigYesNoOption(state,"lazyfree-lazy-server-del",server.lazyfree_lazy_server_del,CONFIG_DEFAULT_LAZYFREE_LAZY_SERVER_DEL);
     rewriteConfigYesNoOption(state,"slave-lazy-flush",server.repl_slave_lazy_flush,CONFIG_DEFAULT_SLAVE_LAZY_FLUSH);
+
+    /* aof binlog */
+    rewriteConfigBytesOption(state, NO_LOOSE_PREFIX"aof-max-size",
+                             server.aof_max_size, REDIS_DEFAULT_AOF_MAX_SIZE);
+    rewriteConfigNumericalOption(
+        state, NO_LOOSE_PREFIX"cron-bgsave-rewrite-percentage",
+        server.cron_bgsave_rewrite_perc, REDIS_CRON_BGSAVE_REWRITE_PERC);
+    rewriteConfigBytesOption(
+        state, NO_LOOSE_PREFIX"cron-bgsave-rewrite-min-size",
+        server.cron_bgsave_rewrite_min_size, REDIS_CRON_BGSAVE_REWRITE_MIN_SIZE);
+    rewriteConfigYesNoOption(state, NO_LOOSE_PREFIX"auto-cron-bgsave",
+                             server.auto_cron_bgsave_state,
+                             REDIS_DEFAULT_AUTO_CRON_BGSAVE);
+    rewriteConfigYesNoOption(state, NO_LOOSE_PREFIX"auto-purge-aof",
+                             server.auto_purge_aof, 1);
+    rewriteConfigYesNoOption(state, NO_LOOSE_PREFIX"aof-psync-state",
+                             server.aof_psync_state, 1);
+    rewriteConfigNumericalOption(
+        state, NO_LOOSE_PREFIX"repl-stream-db",
+        server.rsi_config->repl_stream_db, -1);
+    rewriteConfigStringOption(
+        state, NO_LOOSE_PREFIX"repl-id", server.rsi_config->replid, NULL);
+    rewriteConfigNumericalOption(
+        state, NO_LOOSE_PREFIX"repl-offset", server.rsi_config->repl_offset, 0);
+    rewriteConfigStringOption(
+        state, NO_LOOSE_PREFIX"repl-id2", server.rsi_config->replid2, NULL);
+    rewriteConfigNumericalOption(
+        state, NO_LOOSE_PREFIX"repl-second-replid-opid",
+        server.rsi_config->second_replid_opid, -1);
+    rewriteConfigYesNoOption(state,NO_LOOSE_PREFIX"rdb-save-incremental-fsync",
+                             server.rdb_save_incremental_fsync,
+                             REDIS_DEFAULT_RDB_SAVE_INCREMENTAL_FSYNC);
+    rewriteConfigBytesOption(
+        state, NO_LOOSE_PREFIX"aof-buf-queue-max-size",
+        server.aof_buf_limit, REDIS_AOF_BUF_QUEUE_DEFAULT_LIMIT);
+    rewriteConfigNumericalOption(
+        state, NO_LOOSE_PREFIX"opdel-source-timeout",
+        server.opdel_source_timeout, REDIS_DEFAULT_OPDEL_SOURCE_TIMEOUT);
+    rewriteConfigNumericalOption(state, NO_LOOSE_PREFIX"opget-max-count",
+                                 server.opget_max_count, REDIS_OPGET_MAX_COUNT);
+    rewriteConfigNumericalOption(state, NO_LOOSE_PREFIX"opget-master-min-slaves",
+                                 server.opget_master_min_slaves, 1);
+    rewriteConfigNumericalOption(state,NO_LOOSE_PREFIX"server-id",server.server_id,REDIS_SERVERID);
 
     /* Rewrite Sentinel config if in Sentinel mode. */
     if (server.sentinel_mode) rewriteConfigSentinelOption(state);

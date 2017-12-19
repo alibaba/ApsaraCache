@@ -556,6 +556,8 @@ void debugCommand(client *c) {
         changeReplicationId();
         clearReplicationId2();
         addReply(c,shared.ok);
+    } else if (debugLoadDisk(c) == C_OK) {
+        // do nothing
     } else {
         addReplyErrorFormat(c, "Unknown DEBUG subcommand or wrong number of arguments for '%s'",
             (char*)c->argv[1]->ptr);
@@ -582,7 +584,7 @@ void _serverAssertPrintClientInfo(const client *c) {
 
     bugReportStart();
     serverLog(LL_WARNING,"=== ASSERTION FAILED CLIENT CONTEXT ===");
-    serverLog(LL_WARNING,"client->flags = %d", c->flags);
+    serverLog(LL_WARNING,"client->flags = %ld", c->flags);
     serverLog(LL_WARNING,"client->fd = %d", c->fd);
     serverLog(LL_WARNING,"client->argc = %d", c->argc);
     for (j=0; j < c->argc; j++) {

@@ -28,3 +28,8 @@ deps/lua/src/liblua.a
 .prerequisites
 *.dSYM
 Makefile.dep
+src/GPATH
+src/GRTAGS
+src/GTAGS
+redis-aof-tools
+tests/tmp

@@ -60,12 +60,18 @@
 
 #include "server.h"
 #include "bio.h"
+#include <fcntl.h>
 
 static pthread_t bio_threads[BIO_NUM_OPS];
 static pthread_mutex_t bio_mutex[BIO_NUM_OPS];
 static pthread_cond_t bio_newjob_cond[BIO_NUM_OPS];
 static pthread_cond_t bio_step_cond[BIO_NUM_OPS];
 static list *bio_jobs[BIO_NUM_OPS];
+// static char *bio_thread_names[BIO_NUM_OPS] = {"redis_bio_close_file",
+//                                               "redis_bio_aof_fsync",
+//                                               "redis_bio_lazy_free",
+//                                               "redis_bio_find_opid",
+//                                               "redis_bio_aof_purge"};
 /* The following array is used to hold the number of pending jobs for every
  * OP type. This allows us to export the bioPendingJobsOfType() API that is
  * useful when the main thread wants to perform some operation that may involve
@@ -185,9 +191,18 @@ void *bioProcessBackgroundJobs(void *arg) {
 
         /* Process the job accordingly to its type. */
         if (type == BIO_CLOSE_FILE) {
-            close((long)job->arg1);
+            handleBioFileClose(job->arg1, job->arg2);
         } else if (type == BIO_AOF_FSYNC) {
-            aof_fsync((long)job->arg1);
+            if ((long)job->arg2 == BIO_HANDLE_AOF_QUEUE ) {
+                aofQueueHandleReq((aofQueue *)(job->arg1));
+            } else {
+                aof_fsync((long)job->arg1);
+            }
+        } else if (type == BIO_AOF_PURGE) {
+            handleBioFilePurge(job->arg1);
+        } else if (type == BIO_FIND_OFFSET_BY_OPID) {
+            bioFindOffsetByOpid((client *)job->arg1, (long long)job->arg2,
+                                (uint64_t)job->arg3);
         } else if (type == BIO_LAZY_FREE) {
             /* What we free changes depending on what arguments are set:
              * arg1 -> free the object at pointer.

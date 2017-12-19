@@ -106,7 +106,7 @@ void discardCommand(client *c) {
 void execCommandPropagateMulti(client *c) {
     robj *multistring = createStringObject("MULTI",5);
 
-    propagate(server.multiCommand,c->db->id,&multistring,1,
+    propagate(c, server.multiCommand,c->db->id,&multistring,1,
               PROPAGATE_AOF|PROPAGATE_REPL);
     decrRefCount(multistring);
 }
@@ -152,8 +152,12 @@ void execCommand(client *c) {
          * is not readonly nor an administrative one.
          * This way we'll deliver the MULTI/..../EXEC block as a whole and
          * both the AOF and the replication link will have the same consistency
-         * and atomicity guarantees. */
-        if (!must_propagate && !(c->cmd->flags & (CMD_READONLY|CMD_ADMIN))) {
+         * and atomicity guarantees.
+         *
+         * if it's a selectCommand in multi/exec block, write MULTI first in
+         * aof binlog. */
+        if (!must_propagate && (!(c->cmd->flags & CMD_READONLY)
+                                 || c->cmd->proc == selectCommand)) {
             execCommandPropagateMulti(c);
             must_propagate = 1;
         }

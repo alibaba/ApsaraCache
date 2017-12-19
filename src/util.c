@@ -799,6 +799,43 @@ int safe_strtol(const char *str, int32_t *out) {
     return C_ERR;
 }
 
+ssize_t safe_write(int fd, const char *buf, size_t len) {
+    size_t left = len;
+    const char *src = buf;
+    ssize_t written = 0;
+
+    while(left != 0) {
+        ssize_t done = write(fd, src, left);
+
+        if (done < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return written;
+        }
+
+        left -= done;
+        src += done;
+        written += done;
+    }
+
+    return written;
+}
+
+int getFilePathByFd(int fd, char *buf, size_t len) {
+    char path[100];
+    snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+    int ret = readlink(path, buf, len);
+    if ((ret >= 0) && (ret < (int)len)) {
+        buf[ret] = '\0';
+    } else {
+        buf[0] = '\0';
+        ret = -1;
+    }
+
+    return ret;
+}
+
 
 #ifdef REDIS_TEST
 #include <assert.h>
@@ -953,6 +990,7 @@ int utilTest(int argc, char **argv) {
     UNUSED(argc);
     UNUSED(argv);
 
+    test_getFilePathByFd();
     test_string2ll();
     test_string2l();
     test_ll2string();

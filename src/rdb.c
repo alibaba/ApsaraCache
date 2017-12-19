@@ -1004,6 +1004,7 @@ int rdbSave(char *filename, rdbSaveInfo *rsi) {
     char tmpfile[256];
     char cwd[MAXPATHLEN]; /* Current working dir path for error messages. */
     FILE *fp;
+    FILE *fp_tmp_rdb_index = NULL;
     rio rdb;
     int error = 0;
 
@@ -1021,8 +1022,15 @@ int rdbSave(char *filename, rdbSaveInfo *rsi) {
     }
 
     rioInitWithFile(&rdb,fp);
+    setAutoSyncForIncrFsync(&rdb);
     if (rdbSaveRio(&rdb,&error,RDB_SAVE_NONE,rsi) == C_ERR) {
         errno = error;
+        goto werr;
+    }
+
+    fp_tmp_rdb_index = fopen(REDIS_RDB_INDEX_TMP_FILENAME, "w");
+    /* write temp-rdb.index file first in orer to make a crash recovery */
+    if (writeAndFlushTmpRdbIndex(fp_tmp_rdb_index, filename) != C_OK) {
         goto werr;
     }
 
@@ -1046,6 +1054,11 @@ int rdbSave(char *filename, rdbSaveInfo *rsi) {
         return C_ERR;
     }
 
+    /* make sure rename DB file before rename rdb.index file */
+    if (renameTmpRdbIndex() != C_OK) {
+        return C_ERR;
+    }
+
     serverLog(LL_NOTICE,"DB saved on disk");
     server.dirty = 0;
     server.lastsave = time(NULL);
@@ -1056,6 +1069,7 @@ werr:
     serverLog(LL_WARNING,"Write error saving DB on disk: %s", strerror(errno));
     fclose(fp);
     unlink(tmpfile);
+    cleanTmpRdbIndex(fp_tmp_rdb_index);
     return C_ERR;
 }
 
@@ -1068,6 +1082,8 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
     server.dirty_before_bgsave = server.dirty;
     server.lastbgsave_try = time(NULL);
     openChildInfoPipe();
+
+    prepareForRdbSave();
 
     start = ustime();
     if ((childpid = fork()) == 0) {
@@ -1116,6 +1132,8 @@ void rdbRemoveTempFile(pid_t childpid) {
     char tmpfile[256];
 
     snprintf(tmpfile,sizeof(tmpfile),"temp-%d.rdb", (int) childpid);
+    /* remove tmp-rdb.index file */
+    removeTmpRdbIndexIfNeeded(tmpfile);
     unlink(tmpfile);
 }
 
@@ -1695,6 +1713,7 @@ void backgroundSaveDoneHandlerDisk(int exitcode, int bysignal) {
         server.dirty = server.dirty - server.dirty_before_bgsave;
         server.lastsave = time(NULL);
         server.lastbgsave_status = C_OK;
+        collectAofAndMemInfoAfterBgsave();
     } else if (!bysignal && exitcode != 0) {
         serverLog(LL_WARNING, "Background saving error");
         server.lastbgsave_status = C_ERR;
@@ -2009,12 +2028,17 @@ void saveCommand(client *c) {
 /* BGSAVE [SCHEDULE] */
 void bgsaveCommand(client *c) {
     int schedule = 0;
+    int specify_rdb_filename = 0;
 
     /* The SCHEDULE option changes the behavior of BGSAVE when an AOF rewrite
      * is in progress. Instead of returning an error a BGSAVE gets scheduled. */
     if (c->argc > 1) {
         if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"schedule")) {
             schedule = 1;
+        } else if (c->argc == 2 &&
+                   validateFileName(c->argv[1]->ptr, strlen(c->argv[1]->ptr))
+                   == C_OK) {
+            specify_rdb_filename = 1;
         } else {
             addReply(c,shared.syntaxerr);
             return;
@@ -2032,12 +2056,15 @@ void bgsaveCommand(client *c) {
             addReplyStatus(c,"Background saving scheduled");
         } else {
             addReplyError(c,
-                "An AOF log rewriting in progress: can't BGSAVE right now. "
-                "Use BGSAVE SCHEDULE in order to schedule a BGSAVE whenever "
-                "possible.");
+                          "An AOF log rewriting in progress: can't BGSAVE right now. "
+                          "Use BGSAVE SCHEDULE in order to schedule a BGSAVE whenever "
+                          "possible.");
         }
-    } else if (rdbSaveBackground(server.rdb_filename,rsiptr) == C_OK) {
-        addReplyStatus(c,"Background saving started");
+    } else if((c->argc == 2 && specify_rdb_filename == 1 &&
+               rdbSaveBackground(c->argv[1]->ptr, rsiptr) == C_OK) ||
+              (c->argc == 1 &&
+               rdbSaveBackground(server.rdb_filename, rsiptr) == C_OK)){
+        bgsaveNormalReply(c);
     } else {
         addReply(c,shared.err);
     }

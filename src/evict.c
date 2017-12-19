@@ -365,11 +365,16 @@ size_t freeMemoryGetNotCountedMemory(void) {
     }
     if (server.aof_state != AOF_OFF) {
         overhead += sdslen(server.aof_buf)+aofRewriteBufferSize();
+        if (server.aof_fsync == AOF_FSYNC_BIO_WRITE) {
+            overhead += aofQueueTotalLen(server.aof_queue);
+        }
     }
     return overhead;
 }
 
 int freeMemoryIfNeeded(void) {
+    if (checkIfNoNeedToFreeMem(NULL) == C_OK) return C_OK;
+
     size_t mem_reported, mem_used, mem_tofree, mem_freed;
     mstime_t latency, eviction_latency;
     long long delta;
@@ -489,7 +494,8 @@ int freeMemoryIfNeeded(void) {
         if (bestkey) {
             db = server.db+bestdbid;
             robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
-            propagateExpire(db,keyobj,server.lazyfree_lazy_eviction);
+            propagateExpire(db,keyobj,server.lazyfree_lazy_eviction,
+                            REDIS_DEL_BY_EVICTION);
             /* We compute the amount of memory freed by db*Delete() alone.
              * It is possible that actually the memory needed to propagate
              * the DEL in AOF and replication link is greater than the one

@@ -256,7 +256,7 @@ struct redisCommand redisCommandTable[] = {
     {"exec",execCommand,1,"sM",0,NULL,0,0,0,0,0},
     {"discard",discardCommand,1,"sF",0,NULL,0,0,0,0,0},
     {"sync",syncCommand,1,"ars",0,NULL,0,0,0,0,0},
-    {"psync",syncCommand,3,"ars",0,NULL,0,0,0,0,0},
+    {"psync",syncCommand,-3,"ars",0,NULL,0,0,0,0,0},
     {"replconf",replconfCommand,-1,"aslt",0,NULL,0,0,0,0,0},
     {"flushdb",flushdbCommand,-1,"w",0,NULL,0,0,0,0,0},
     {"flushall",flushallCommand,-1,"w",0,NULL,0,0,0,0,0},
@@ -315,7 +315,18 @@ struct redisCommand redisCommandTable[] = {
     {"pfdebug",pfdebugCommand,-3,"w",0,NULL,0,0,0,0,0},
     {"post",securityWarningCommand,-1,"lt",0,NULL,0,0,0,0,0},
     {"host:",securityWarningCommand,-1,"lt",0,NULL,0,0,0,0,0},
-    {"latency",latencyCommand,-2,"aslt",0,NULL,0,0,0,0,0}
+    {"latency",latencyCommand,-2,"aslt",0,NULL,0,0,0,0,0},
+    {"purgeaofto",purgeAofToCommand,-2,"ar",0,NULL,0,0,0,0,0},
+    {"opinfo",opinfoCommand,-2,"aw",0,NULL,0,0,0,0,0},
+    {"opdel",opDelCommand,-3,"ar",0,NULL,0,0,0,0,0},
+    {"opapply",opApplyCommand,-1,"ar",0,NULL,0,0,0,0,0},
+    {"aofflush",aofFlushCommand,-1,"ar",0,NULL,0,0,0,0,0},
+    {"syncreploffset",syncReplOffsetCommand,-2,"ars",0,NULL,0,0,0,0,0},
+    {"forcefullresync",forceFullResyncCommand,-1,"ars",0,NULL,0,0,0,0,0},
+    {"syncstate",syncstateCommand,4,"arl",0,NULL,0,0,0,0,0},
+    {"opget",opGetCommand,-2,"ar",0,NULL,0,0,0,0,0},
+    {"opRestore",opRestoreCommand,-2,"w",0,NULL,0,0,0,0,0},
+    {"getopidbyaof",getOpidByAofCommand,2,"ar",0,NULL,0,0,0,0,0}
 };
 
 /*============================ Utility functions ============================ */
@@ -1073,11 +1084,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
-    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1 &&
-        server.aof_rewrite_scheduled)
-    {
-        rewriteAppendOnlyFileBackground();
-    }
+    // if (server.rdb_child_pid == -1 && server.aof_child_pid == -1 &&
+    //     server.aof_rewrite_scheduled)
+    // {
+    //     rewriteAppendOnlyFileBackground();
+    // }
 
     /* Check if a background saving or AOF rewrite in progress terminated. */
     if (server.rdb_child_pid != -1 || server.aof_child_pid != -1 ||
@@ -1140,19 +1151,22 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
          }
 
          /* Trigger an AOF rewrite if needed */
-         if (server.rdb_child_pid == -1 &&
-             server.aof_child_pid == -1 &&
-             server.aof_rewrite_perc &&
-             server.aof_current_size > server.aof_rewrite_min_size)
-         {
-            long long base = server.aof_rewrite_base_size ?
-                            server.aof_rewrite_base_size : 1;
-            long long growth = (server.aof_current_size*100/base) - 100;
-            if (growth >= server.aof_rewrite_perc) {
-                serverLog(LL_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
-                rewriteAppendOnlyFileBackground();
-            }
-         }
+         // if (server.rdb_child_pid == -1 &&
+         //     server.aof_child_pid == -1 &&
+         //     server.aof_rewrite_perc &&
+         //     server.aof_current_size > server.aof_rewrite_min_size)
+         // {
+         //    long long base = server.aof_rewrite_base_size ?
+         //                    server.aof_rewrite_base_size : 1;
+         //    long long growth = (server.aof_current_size*100/base) - 100;
+         //    if (growth >= server.aof_rewrite_perc) {
+         //        serverLog(LL_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
+         //        rewriteAppendOnlyFileBackground();
+         //    }
+         // }
+
+         /* cron bgsave */
+         cronBgsave();
     }
 
 
@@ -1169,8 +1183,12 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             flushAppendOnlyFile(0);
     }
 
+    aofSplitCron();
+
     /* Close clients that need to be closed asynchronous */
     freeClientsInAsyncFreeQueue();
+
+    handleBioFindOffsetResCron();
 
     /* Clear the paused clients flag if needed. */
     clientsArePaused(); /* Don't check return value, just use the side effect.*/
@@ -1212,6 +1230,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             server.rdb_bgsave_scheduled = 0;
     }
 
+    aofPurgeCron();
+
     server.cronloops++;
     return 1000/server.hz;
 }
@@ -1241,7 +1261,8 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
         argv[0] = createStringObject("REPLCONF",8);
         argv[1] = createStringObject("GETACK",6);
         argv[2] = createStringObject("*",1); /* Not used argument. */
-        replicationFeedSlaves(server.slaves, server.slaveseldb, argv, 3);
+        replicationFeedSlaves(NULL, server.replconfCommand, server.slaves,
+                              server.slaveseldb, argv, 3);
         decrRefCount(argv[0]);
         decrRefCount(argv[1]);
         decrRefCount(argv[2]);
@@ -1373,6 +1394,7 @@ void createSharedObjects(void) {
      * string in string comparisons for the ZRANGEBYLEX command. */
     shared.minstring = sdsnew("minstring");
     shared.maxstring = sdsnew("maxstring");
+    createExtraSharedObjs();
 }
 
 void initServerConfig(void) {
@@ -1566,6 +1588,8 @@ void initServerConfig(void) {
     server.assert_line = 0;
     server.bug_report_start = 0;
     server.watchdog_period = 0;
+
+    initExtraServerVars();
 }
 
 extern char **environ;
@@ -2001,11 +2025,7 @@ void initServer(void) {
 
     /* Open the AOF file if needed. */
     if (server.aof_state == AOF_ON) {
-        server.aof_fd = open(server.aof_filename,
-                               O_WRONLY|O_APPEND|O_CREAT,0644);
-        if (server.aof_fd == -1) {
-            serverLog(LL_WARNING, "Can't open the append-only file: %s",
-                strerror(errno));
+        if (openAppendOnly() != C_OK) {
             exit(1);
         }
     }
@@ -2026,6 +2046,7 @@ void initServer(void) {
     slowlogInit();
     latencyMonitorInit();
     bioInit();
+    aofBioWriteInit();
     server.initial_memory_usage = zmalloc_used_memory();
 }
 
@@ -2204,13 +2225,16 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
  * This should not be used inside commands implementation. Use instead
  * alsoPropagate(), preventCommandPropagation(), forceCommandPropagation().
  */
-void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
-               int flags)
+void propagate(client *c, struct redisCommand *cmd, int dbid,
+               robj **argv, int argc, int flags)
 {
-    if (server.aof_state != AOF_OFF && flags & PROPAGATE_AOF)
-        feedAppendOnlyFile(cmd,dbid,argv,argc);
+    if (server.aof_state != AOF_OFF && flags & PROPAGATE_AOF) {
+        feedAppendOnlyFile(c, cmd, dbid, argv, argc,
+                           (cmd->proc == delCommand ?
+                            REDIS_DEL_BY_CLIENT : REDIS_DEL_NONE));
+    }
     if (flags & PROPAGATE_REPL)
-        replicationFeedSlaves(server.slaves,dbid,argv,argc);
+        replicationFeedSlaves(c, cmd, server.slaves, dbid, argv, argc);
 }
 
 /* Used inside commands to schedule the propagation of additional commands
@@ -2387,7 +2411,7 @@ void call(client *c, int flags) {
          * propagation is needed. Note that modules commands handle replication
          * in an explicit way, so we never replicate them automatically. */
         if (propagate_flags != PROPAGATE_NONE && !(c->cmd->flags & CMD_MODULE))
-            propagate(c->cmd,c->db->id,c->argv,c->argc,propagate_flags);
+            propagate(c, c->cmd,c->db->id,c->argv,c->argc,propagate_flags);
     }
 
     /* Restore the old replication flags, since call() can be executed
@@ -2411,7 +2435,7 @@ void call(client *c, int flags) {
                 if (!(flags&CMD_CALL_PROPAGATE_AOF)) target &= ~PROPAGATE_AOF;
                 if (!(flags&CMD_CALL_PROPAGATE_REPL)) target &= ~PROPAGATE_REPL;
                 if (target)
-                    propagate(rop->cmd,rop->dbid,rop->argv,rop->argc,target);
+                    propagate(c, rop->cmd,rop->dbid,rop->argv,rop->argc,target);
             }
         }
         redisOpArrayFree(&server.also_propagate);
@@ -2465,6 +2489,8 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    if (checkOpapplyCmdIgnored(c) == C_OK) return C_OK;
+
     /* Check if the user is authenticated */
     if (server.requirepass && !c->authenticated && c->cmd->proc != authCommand && c->cmd->proc != authMemcachedCommand && c->cmd->proc != saslListMechsMemcachedCommand && c->cmd->proc != saslAuthMemcachedCommand && c->cmd->proc != saslStepMemcachedCommand && c->cmd->proc != versionMemcachedCommand )
     {
@@ -2514,7 +2540,7 @@ int processCommand(client *c) {
      * First we try to free some memory if possible (if there are volatile
      * keys in the dataset). If there are not the only thing we can do
      * is returning an error. */
-    if (server.maxmemory) {
+    if (server.maxmemory && checkIfNoNeedToFreeMem(c) != C_OK) {
         int retval = freeMemoryIfNeeded();
         /* freeMemoryIfNeeded may flush slave output buffers. This may result
          * into a slave, that may be the active client, to be freed. */
@@ -2534,14 +2560,17 @@ int processCommand(client *c) {
     if (((server.stop_writes_on_bgsave_err &&
           server.saveparamslen > 0 &&
           server.lastbgsave_status == C_ERR) ||
-          server.aof_last_write_status == C_ERR) &&
+         server.aof_last_write_status == C_ERR ||
+         server.aof_last_open_status == C_ERR) &&
         server.masterhost == NULL &&
         (c->cmd->flags & CMD_WRITE ||
          c->cmd->proc == pingCommand))
     {
         flagTransaction(c);
-        if (server.aof_last_write_status == C_OK) {
+        if (server.aof_last_write_status == C_ERR) {
             helpWrappers.replyWritingAofErr(c, NULL);
+        } else if (server.aof_last_open_status == C_ERR) {
+            helpWrappers.replyOpenningAofErr(c, NULL);
         } else {
             helpWrappers.replyBgsaveErr(c, NULL);
         }
@@ -2655,6 +2684,9 @@ int prepareForShutdown(int flags) {
 
     serverLog(LL_WARNING,"User requested shutdown...");
 
+    /* save repl info before shutdown */
+    saveChangedReplInfoIntoConfig();
+
     /* Kill all the Lua debugger forked sessions. */
     ldbKillForkedSessions();
 
@@ -2685,6 +2717,7 @@ int prepareForShutdown(int flags) {
         serverLog(LL_NOTICE,"Calling fsync() on the AOF file.");
         flushAppendOnlyFile(1);
         aof_fsync(server.aof_fd);
+        close(server.aof_fd);
     }
 
     /* Create a new RDB file before exiting. */
@@ -3160,20 +3193,26 @@ sds genRedisInfoString(char *section) {
 
         if (server.aof_state != AOF_OFF) {
             info = sdscatprintf(info,
-                "aof_current_size:%lld\r\n"
-                "aof_base_size:%lld\r\n"
-                "aof_pending_rewrite:%d\r\n"
-                "aof_buffer_length:%zu\r\n"
-                "aof_rewrite_buffer_length:%lu\r\n"
-                "aof_pending_bio_fsync:%llu\r\n"
-                "aof_delayed_fsync:%lu\r\n",
-                (long long) server.aof_current_size,
-                (long long) server.aof_rewrite_base_size,
-                server.aof_rewrite_scheduled,
-                sdslen(server.aof_buf),
-                aofRewriteBufferSize(),
-                bioPendingJobsOfType(BIO_AOF_FSYNC),
-                server.aof_delayed_fsync);
+                                "aof_current_size:%lld\r\n"
+                                "aof_base_size:%lld\r\n"
+                                "aof_pending_rewrite:%d\r\n"
+                                "aof_buffer_length:%zu\r\n"
+                                "aof_rewrite_buffer_length:%lu\r\n"
+                                "aof_pending_bio_fsync:%llu\r\n"
+                                "aof_delayed_fsync:%lu\r\n"
+                                "last_cron_bgsave_mem_use:%zu\r\n"
+                                "aof_inc_from_last_cron_bgsave:%lld\r\n",
+                                (long long) server.aof_current_size,
+                                (long long) server.aof_rewrite_base_size,
+                                server.aof_rewrite_scheduled,
+                                sdslen(server.aof_buf),
+                                aofRewriteBufferSize(),
+                                bioPendingJobsOfType(BIO_AOF_FSYNC),
+                                server.aof_delayed_fsync,
+                                server.last_cron_bgsave_mem_use,
+                                (long long) server.aof_inc_from_last_cron_bgsave
+                );
+            info = catCronBgsaveInfo(info);
         }
 
         if (server.loading) {
@@ -3261,6 +3300,13 @@ sds genRedisInfoString(char *section) {
             server.stat_active_defrag_misses,
             server.stat_active_defrag_key_hits,
             server.stat_active_defrag_key_misses);
+    }
+
+    /* AofBioStats */
+    if ((server.aof_fsync == AOF_FSYNC_BIO_WRITE) && (server.aof_queue != NULL)
+        && (allsections || defsections || !strcasecmp(section, "aofbiostats"))) {
+        if (sections++) info = sdscat(info, "\r\n");
+        info = catAofBioInfo(info);
     }
 
     /* Replication */
@@ -3365,10 +3411,12 @@ sds genRedisInfoString(char *section) {
                     lag = time(NULL) - slave->repl_ack_time;
 
                 info = sdscatprintf(info,
-                    "slave%d:ip=%s,port=%d,state=%s,"
-                    "offset=%lld,lag=%ld\r\n",
-                    slaveid,slaveip,slave->slave_listening_port,state,
-                    slave->repl_ack_off, lag);
+                                    "slave%d:ip=%s,port=%d,state=%s,"
+                                    "offset=%lld,lag=%ld,opid=%lld\r\n",
+                                    slaveid, slaveip,
+                                    slave->slave_listening_port,state,
+                                    slave->repl_ack_off, lag,
+                                    getSlaveCurOpid(slave));
                 slaveid++;
             }
         }
@@ -3389,6 +3437,13 @@ sds genRedisInfoString(char *section) {
             server.repl_backlog_size,
             server.repl_backlog_off,
             server.repl_backlog_histlen);
+        info = catExtraReplInfo(info);
+    }
+
+    if (allsections || !strcasecmp(section,"oplog")) {
+        if (sections++) info = sdscat(info,"\r\n");
+        info = sdscat(info, "# Oplog\r\n");
+        info = catOplogInfo(info);
     }
 
     /* CPU */
@@ -3675,38 +3730,39 @@ int checkForSentinelMode(int argc, char **argv) {
 
 /* Function called at startup to load RDB or AOF file in memory. */
 void loadDataFromDisk(void) {
-    long long start = ustime();
-    if (server.aof_state == AOF_ON) {
-        if (loadAppendOnlyFile(server.aof_filename) == C_OK)
-            serverLog(LL_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
-    } else {
-        rdbSaveInfo rsi = RDB_SAVE_INFO_INIT;
-        if (rdbLoad(server.rdb_filename,&rsi) == C_OK) {
-            serverLog(LL_NOTICE,"DB loaded from disk: %.3f seconds",
-                (float)(ustime()-start)/1000000);
+    loadDataFromRdbAndAof();
+    // long long start = ustime();
+    // if (server.aof_state == AOF_ON) {
+    //     if (loadAppendOnlyFile(server.aof_filename) == C_OK)
+    //         serverLog(LL_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
+    // } else {
+    //     rdbSaveInfo rsi = RDB_SAVE_INFO_INIT;
+    //     if (rdbLoad(server.rdb_filename,&rsi) == C_OK) {
+    //         serverLog(LL_NOTICE,"DB loaded from disk: %.3f seconds",
+    //             (float)(ustime()-start)/1000000);
 
-            /* Restore the replication ID / offset from the RDB file. */
-            if (server.masterhost &&
-                rsi.repl_id_is_set &&
-                rsi.repl_offset != -1 &&
-                /* Note that older implementations may save a repl_stream_db
-                 * of -1 inside the RDB file in a wrong way, see more information
-                 * in function rdbPopulateSaveInfo. */
-                rsi.repl_stream_db != -1)
-            {
-                memcpy(server.replid,rsi.repl_id,sizeof(server.replid));
-                server.master_repl_offset = rsi.repl_offset;
-                /* If we are a slave, create a cached master from this
-                 * information, in order to allow partial resynchronizations
-                 * with masters. */
-                replicationCacheMasterUsingMyself();
-                selectDb(server.cached_master,rsi.repl_stream_db);
-            }
-        } else if (errno != ENOENT) {
-            serverLog(LL_WARNING,"Fatal error loading the DB: %s. Exiting.",strerror(errno));
-            exit(1);
-        }
-    }
+    //         /* Restore the replication ID / offset from the RDB file. */
+    //         if (server.masterhost &&
+    //             rsi.repl_id_is_set &&
+    //             rsi.repl_offset != -1 &&
+    //             /* Note that older implementations may save a repl_stream_db
+    //              * of -1 inside the RDB file in a wrong way, see more information
+    //              * in function rdbPopulateSaveInfo. */
+    //             rsi.repl_stream_db != -1)
+    //         {
+    //             memcpy(server.replid,rsi.repl_id,sizeof(server.replid));
+    //             server.master_repl_offset = rsi.repl_offset;
+    //             /* If we are a slave, create a cached master from this
+    //              * information, in order to allow partial resynchronizations
+    //              * with masters. */
+    //             replicationCacheMasterUsingMyself();
+    //             selectDb(server.cached_master,rsi.repl_stream_db);
+    //         }
+    //     } else if (errno != ENOENT) {
+    //         serverLog(LL_WARNING,"Fatal error loading the DB: %s. Exiting.",strerror(errno));
+    //         exit(1);
+    //     }
+    // }
 }
 
 void redisOutOfMemoryHandler(size_t allocation_size) {
@@ -4014,6 +4070,13 @@ int main(int argc, char **argv) {
     if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {
         serverLog(LL_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
+
+    /* if this is Redis's first start,
+     * generate first empty dump.rdb and rdb.index file */
+    initFirstRdbIndex();
+
+    /* save config generated by redis start init, e.g. replid */
+    rewriteConfig(server.configfile);
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeSetAfterSleepProc(server.el,afterSleep);

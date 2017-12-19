@@ -33,6 +33,18 @@
 #include <stdint.h>
 #include "sds.h"
 
+#define ARR_LEN(arr) ((sizeof(arr))/(sizeof(arr[0])))
+
+#if defined(__ATOMIC_RELAXED)
+#define atomic_add(q, n) __atomic_add_fetch(&(q), (n), __ATOMIC_RELAXED)
+#define atomic_sub(q, n) __atomic_sub_fetch(&(q), (n), __ATOMIC_RELAXED)
+#define atomic_bool_compare_and_swap(q, o, n) __atomic_compare_exchange_n(&(q), &(o), (n), 0, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)
+#else
+#define atomic_add(q, n) __sync_add_and_fetch(&(q), (n))
+#define atomic_sub(q, n) __sync_sub_and_fetch(&(q), (n))
+#define atomic_bool_compare_and_swap(q, o, n) __sync_bool_compare_and_swap(&(q), (o), (n))
+#endif
+
 int stringmatchlen(const char *p, int plen, const char *s, int slen, int nocase);
 int stringmatch(const char *p, const char *s, int nocase);
 long long memtoll(const char *p, int *err);
@@ -47,6 +59,9 @@ int ld2string(char *buf, size_t len, long double value, int humanfriendly);
 sds getAbsolutePath(char *filename);
 int pathIsBaseName(char *path);
 unsigned ull2string(char *s, size_t slen, uint64_t value);
+
+ssize_t safe_write(int fd, const char *buf, size_t len);
+int getFilePathByFd(int fd, char *buf, size_t len);
 
 /* Wrappers around strtoull/strtoll that are safer and easier to
  * use.  For tests and assumptions, see internal_tests.c.
