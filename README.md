@@ -85,9 +85,9 @@ You can use telnet to visit ApsaraCache(telnet use the classic ASCII protocol).
 
 Enjoy!
 
-Test point in time recovery(PITR)
+Test new persistence mechanism and PITR
 ------------------
-* [Documentation](https://github.com/alibaba/ApsaraCache/wiki/Test-point-in-time-recovery(PITR))
+* [Documentation](https://github.com/alibaba/ApsaraCache/wiki/Test-new-persistence-mechanism-and-PITR)
 
 Test log based replication(AOF PSYNC)
 ------------------
