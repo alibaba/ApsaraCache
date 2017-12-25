@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2017, Alibaba Group Holding Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,39 +27,30 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _REDIS_FMACRO_H
-#define _REDIS_FMACRO_H
+#ifndef __MSQUEUE_H__
+#define __MSQUEUE_H__
+#include <pthread.h>
 
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
+typedef struct queueNode {
+    struct queueNode *next;
+} queueNode;
 
-#if defined(__linux__)
-#define _GNU_SOURCE
-#ifndef _BSD_SOURCE
-#define _DEFAULT_SOURCE
-#endif
-#endif
+typedef struct queue {
+    queueNode *head;
+    pthread_spinlock_t head_lock;
 
-#if defined(_AIX)
-#define _ALL_SOURCE
-#endif
+    queueNode *tail;
+    pthread_spinlock_t tail_lock;
 
-#if defined(__linux__) || defined(__OpenBSD__)
-#define _XOPEN_SOURCE 700
-/*
- * On NetBSD, _XOPEN_SOURCE undefines _NETBSD_SOURCE and
- * thus hides inet_aton etc.
- */
-#elif !defined(__NetBSD__)
-#define _XOPEN_SOURCE
-#endif
+    queueNode divider;
+} queue;
 
-#if defined(__sun)
-#define _POSIX_C_SOURCE 199506L
-#endif
+queue *queueInit(queue *q);
 
-#define _LARGEFILE_SOURCE
-#define _FILE_OFFSET_BITS 64
+queue *queueCreate();
 
+void queuePush(queue *q, queueNode *node);
+queueNode *queuePop(queue *q);
+
+void queueSetHead(queue *q, queueNode *node);
 #endif

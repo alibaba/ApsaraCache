@@ -38,6 +38,15 @@
  * C-level DB API
  *----------------------------------------------------------------------------*/
 
+/* Update LFU when an object is accessed.
+ * Firstly, decrement the counter if the decrement time is reached.
+ * Then logarithmically increment the counter, and update the access time. */
+void updateLFU(robj *val) {
+    unsigned long counter = LFUDecrAndReturn(val);
+    counter = LFULogIncr(counter);
+    val->lru = (LFUGetTimeInMinutes()<<8) | counter;
+}
+
 /* Low level key lookup API, not actually called directly from commands
  * implementations that should instead rely on lookupKeyRead(),
  * lookupKeyWrite() and lookupKeyReadWithFlags(). */
@@ -54,9 +63,7 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
             !(flags & LOOKUP_NOTOUCH))
         {
             if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-                unsigned long ldt = val->lru >> 8;
-                unsigned long counter = LFULogIncr(val->lru & 255);
-                val->lru = (ldt << 8) | counter;
+                updateLFU(val);
             } else {
                 val->lru = LRU_CLOCK();
             }
@@ -180,6 +187,9 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
         int saved_lru = old->lru;
         dictReplace(db->dict, key->ptr, val);
         val->lru = saved_lru;
+        /* LFU should be not only copied but also updated
+         * when a key is overwritten. */
+        updateLFU(val);
     } else {
         dictReplace(db->dict, key->ptr, val);
     }
@@ -478,6 +488,10 @@ void selectCommand(client *c) {
     if (selectDb(c,id) == C_ERR) {
         addReplyError(c,"DB index is out of range");
     } else {
+        /* select command in multi/exec block should be written in aof binlog,
+         * otherwise after a restart of redis, all the commands would be
+         * executed just on db 0 */
+        if (c->flags & CLIENT_MULTI) c->flags |= CLIENT_FORCE_AOF;
         addReply(c,shared.ok);
     }
 }
@@ -1068,7 +1082,7 @@ long long getExpire(redisDb *db, robj *key) {
  * AOF and the master->slave link guarantee operation ordering, everything
  * will be consistent even if we allow write operations against expiring
  * keys. */
-void propagateExpire(redisDb *db, robj *key, int lazy) {
+void propagateExpire(redisDb *db, robj *key, int lazy, int del_type) {
     robj *argv[2];
 
     argv[0] = lazy ? shared.unlink : shared.del;
@@ -1077,8 +1091,9 @@ void propagateExpire(redisDb *db, robj *key, int lazy) {
     incrRefCount(argv[1]);
 
     if (server.aof_state != AOF_OFF)
-        feedAppendOnlyFile(server.delCommand,db->id,argv,2);
-    replicationFeedSlaves(server.slaves,db->id,argv,2);
+        feedAppendOnlyFile(NULL,server.delCommand,db->id,argv,2,del_type);
+    replicationFeedSlaves(NULL, server.delCommand, server.slaves,
+                          db->id, argv, 2);
 
     decrRefCount(argv[0]);
     decrRefCount(argv[1]);
@@ -1114,7 +1129,7 @@ int expireIfNeeded(redisDb *db, robj *key) {
 
     /* Delete the key */
     server.stat_expiredkeys++;
-    propagateExpire(db,key,server.lazyfree_lazy_expire);
+    propagateExpire(db,key,server.lazyfree_lazy_expire,REDIS_DEL_BY_EXPIRE);
     notifyKeyspaceEvent(NOTIFY_EXPIRED,
         "expired",key,db->id);
     return server.lazyfree_lazy_expire ? dbAsyncDelete(db,key) :
@@ -1327,7 +1342,7 @@ int *georadiusGetKeys(struct redisCommand *cmd, robj **argv, int argc, int *numk
     for (i = 5; i < argc; i++) {
         char *arg = argv[i]->ptr;
         /* For the case when user specifies both "store" and "storedist" options, the
-         * second key specified would override the first key. This behavior is kept 
+         * second key specified would override the first key. This behavior is kept
          * the same as in georadiusCommand method.
          */
         if ((!strcasecmp(arg, "store") || !strcasecmp(arg, "storedist")) && ((i+1) < argc)) {
@@ -1348,7 +1363,7 @@ int *georadiusGetKeys(struct redisCommand *cmd, robj **argv, int argc, int *numk
     if(num > 1) {
          keys[1] = stored_key;
     }
-    *numkeys = num; 
+    *numkeys = num;
     return keys;
 }
 

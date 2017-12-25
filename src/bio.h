@@ -36,7 +36,16 @@ time_t bioOlderJobOfType(int type);
 void bioKillThreads(void);
 
 /* Background job opcodes */
-#define BIO_CLOSE_FILE    0 /* Deferred close(2) syscall. */
-#define BIO_AOF_FSYNC     1 /* Deferred AOF fsync. */
-#define BIO_LAZY_FREE     2 /* Deferred objects freeing. */
-#define BIO_NUM_OPS       3
+#define BIO_CLOSE_FILE          0 /* Deferred close(2) syscall.
+                                   * Using arg2 of bioCreateBackgroundJob to specify
+                                   * close type: fd or fp */
+#define BIO_AOF_FSYNC           1 /* Deferred AOF fsync. */
+#define BIO_LAZY_FREE           2 /* Deferred objects freeing. */
+#define BIO_FIND_OFFSET_BY_OPID 3
+#define BIO_AOF_PURGE           4 /* Deferred AOF purge. */
+#define BIO_NUM_OPS             5
+
+/* close file type, using close or fclose */
+#define BIO_CLOSE_FD            1
+#define BIO_CLOSE_FP            2
+#define BIO_HANDLE_AOF_QUEUE    3

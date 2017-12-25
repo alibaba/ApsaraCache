@@ -744,7 +744,7 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
         argv[0] = (where == LIST_HEAD) ? shared.lpop :
                                           shared.rpop;
         argv[1] = key;
-        propagate((where == LIST_HEAD) ?
+        propagate(receiver, (where == LIST_HEAD) ?
             server.lpopCommand : server.rpopCommand,
             db->id,argv,2,PROPAGATE_AOF|PROPAGATE_REPL);
 
@@ -762,7 +762,7 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
             /* Propagate the RPOP operation. */
             argv[0] = shared.rpop;
             argv[1] = key;
-            propagate(server.rpopCommand,
+            propagate(receiver, server.rpopCommand,
                 db->id,argv,2,
                 PROPAGATE_AOF|
                 PROPAGATE_REPL);
@@ -772,7 +772,7 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
             argv[0] = shared.lpush;
             argv[1] = dstkey;
             argv[2] = value;
-            propagate(server.lpushCommand,
+            propagate(receiver, server.lpushCommand,
                 db->id,argv,3,
                 PROPAGATE_AOF|
                 PROPAGATE_REPL);

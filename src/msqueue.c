@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2017, Alibaba Group Holding Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,39 +27,67 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _REDIS_FMACRO_H
-#define _REDIS_FMACRO_H
+#include "msqueue.h"
+#include "zmalloc.h"
 
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
+queue* queueCreate() {
+    queue *q = zcalloc(sizeof(queue));
+    if (q != NULL) {
+        return queueInit(q);
+    }
 
-#if defined(__linux__)
-#define _GNU_SOURCE
-#ifndef _BSD_SOURCE
-#define _DEFAULT_SOURCE
-#endif
-#endif
+    return NULL;
+}
 
-#if defined(_AIX)
-#define _ALL_SOURCE
-#endif
+queue* queueInit(queue *q) {
+    pthread_spin_init(&(q->head_lock), 0);
+    pthread_spin_init(&(q->tail_lock), 0);
+    q->divider.next = NULL;
+    q->head = &(q->divider);
+    q->tail = &(q->divider);
 
-#if defined(__linux__) || defined(__OpenBSD__)
-#define _XOPEN_SOURCE 700
-/*
- * On NetBSD, _XOPEN_SOURCE undefines _NETBSD_SOURCE and
- * thus hides inet_aton etc.
- */
-#elif !defined(__NetBSD__)
-#define _XOPEN_SOURCE
-#endif
+    return q;
+}
 
-#if defined(__sun)
-#define _POSIX_C_SOURCE 199506L
-#endif
+void queuePush(queue *q, queueNode *node) {
+    node->next = NULL;
+    pthread_spin_lock(&(q->tail_lock));
+    q->tail->next = node;
+    q->tail = node;
+    pthread_spin_unlock(&(q->tail_lock));
 
-#define _LARGEFILE_SOURCE
-#define _FILE_OFFSET_BITS 64
+}
 
-#endif
+void queueSetHead(queue *q, queueNode *node) {
+    pthread_spin_lock(&(q->head_lock));
+    node->next = q->head;
+    q->head = node;
+
+    pthread_spin_unlock(&(q->head_lock));
+}
+
+queueNode *queuePop(queue *q) {
+    queueNode *head, *next;
+    while (1) {
+        pthread_spin_lock(&(q->head_lock));
+        head = q->head;
+        next = head->next;
+        if (next == NULL) {
+            pthread_spin_unlock(&(q->head_lock));
+            return NULL;
+        }
+
+        q->head = next;
+        pthread_spin_unlock(&(q->head_lock));
+
+        if (head == &(q->divider)) {
+            queuePush(q, head);
+            continue;
+        }
+
+        head->next = NULL;
+
+        return head;
+    }
+}
+

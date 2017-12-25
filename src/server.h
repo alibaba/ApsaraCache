@@ -219,38 +219,46 @@ typedef long long mstime_t; /* millisecond time type. */
 #define AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
 
 /* Client flags */
-#define CLIENT_SLAVE (1<<0)   /* This client is a slave server */
-#define CLIENT_MASTER (1<<1)  /* This client is a master server */
-#define CLIENT_MONITOR (1<<2) /* This client is a slave monitor, see MONITOR */
-#define CLIENT_MULTI (1<<3)   /* This client is in a MULTI context */
-#define CLIENT_BLOCKED (1<<4) /* The client is waiting in a blocking operation */
-#define CLIENT_DIRTY_CAS (1<<5) /* Watched keys modified. EXEC will fail. */
-#define CLIENT_CLOSE_AFTER_REPLY (1<<6) /* Close after writing entire reply. */
-#define CLIENT_UNBLOCKED (1<<7) /* This client was unblocked and is stored in
+#define CLIENT_SLAVE (1UL<<0)   /* This client is a slave server */
+#define CLIENT_MASTER (1UL<<1)  /* This client is a master server */
+#define CLIENT_MONITOR (1UL<<2) /* This client is a slave monitor, see MONITOR */
+#define CLIENT_MULTI (1UL<<3)   /* This client is in a MULTI context */
+#define CLIENT_BLOCKED (1UL<<4) /* The client is waiting in a blocking operation */
+#define CLIENT_DIRTY_CAS (1UL<<5) /* Watched keys modified. EXEC will fail. */
+#define CLIENT_CLOSE_AFTER_REPLY (1UL<<6) /* Close after writing entire reply. */
+#define CLIENT_UNBLOCKED (1UL<<7) /* This client was unblocked and is stored in
                                   server.unblocked_clients */
-#define CLIENT_LUA (1<<8) /* This is a non connected client used by Lua */
-#define CLIENT_ASKING (1<<9)     /* Client issued the ASKING command */
-#define CLIENT_CLOSE_ASAP (1<<10)/* Close this client ASAP */
-#define CLIENT_UNIX_SOCKET (1<<11) /* Client connected via Unix domain socket */
-#define CLIENT_DIRTY_EXEC (1<<12)  /* EXEC will fail for errors while queueing */
-#define CLIENT_MASTER_FORCE_REPLY (1<<13)  /* Queue replies even if is master */
-#define CLIENT_FORCE_AOF (1<<14)   /* Force AOF propagation of current cmd. */
-#define CLIENT_FORCE_REPL (1<<15)  /* Force replication of current cmd. */
-#define CLIENT_PRE_PSYNC (1<<16)   /* Instance don't understand PSYNC. */
-#define CLIENT_READONLY (1<<17)    /* Cluster client is in read-only state. */
-#define CLIENT_PUBSUB (1<<18)      /* Client is in Pub/Sub mode. */
-#define CLIENT_PREVENT_AOF_PROP (1<<19)  /* Don't propagate to AOF. */
-#define CLIENT_PREVENT_REPL_PROP (1<<20)  /* Don't propagate to slaves. */
+#define CLIENT_LUA (1UL<<8) /* This is a non connected client used by Lua */
+#define CLIENT_ASKING (1UL<<9)     /* Client issued the ASKING command */
+#define CLIENT_CLOSE_ASAP (1UL<<10)/* Close this client ASAP */
+#define CLIENT_UNIX_SOCKET (1UL<<11) /* Client connected via Unix domain socket */
+#define CLIENT_DIRTY_EXEC (1UL<<12)  /* EXEC will fail for errors while queueing */
+#define CLIENT_MASTER_FORCE_REPLY (1UL<<13)  /* Queue replies even if is master */
+#define CLIENT_FORCE_AOF (1UL<<14)   /* Force AOF propagation of current cmd. */
+#define CLIENT_FORCE_REPL (1UL<<15)  /* Force replication of current cmd. */
+#define CLIENT_PRE_PSYNC (1UL<<16)   /* Instance don't understand PSYNC. */
+#define CLIENT_READONLY (1UL<<17)    /* Cluster client is in read-only state. */
+#define CLIENT_PUBSUB (1UL<<18)      /* Client is in Pub/Sub mode. */
+#define CLIENT_PREVENT_AOF_PROP (1UL<<19)  /* Don't propagate to AOF. */
+#define CLIENT_PREVENT_REPL_PROP (1UL<<20)  /* Don't propagate to slaves. */
 #define CLIENT_PREVENT_PROP (CLIENT_PREVENT_AOF_PROP|CLIENT_PREVENT_REPL_PROP)
-#define CLIENT_PENDING_WRITE (1<<21) /* Client has output to send but a write
+#define CLIENT_PENDING_WRITE (1UL<<21) /* Client has output to send but a write
                                         handler is yet not installed. */
-#define CLIENT_REPLY_OFF (1<<22)   /* Don't send replies to client. */
-#define CLIENT_REPLY_SKIP_NEXT (1<<23)  /* Set CLIENT_REPLY_SKIP for next cmd */
-#define CLIENT_REPLY_SKIP (1<<24)  /* Don't send just this reply. */
-#define CLIENT_LUA_DEBUG (1<<25)  /* Run EVAL in debug mode. */
-#define CLIENT_LUA_DEBUG_SYNC (1<<26)  /* EVAL debugging without fork() */
-#define CLIENT_MODULE (1<<27) /* Non connected client used by some module. */
-#define CLIENT_NO_REPLY (1 << 28) /* Client need no response*/
+#define CLIENT_REPLY_OFF (1UL<<22)   /* Don't send replies to client. */
+#define CLIENT_REPLY_SKIP_NEXT (1UL<<23)  /* Set CLIENT_REPLY_SKIP for next cmd */
+#define CLIENT_REPLY_SKIP (1UL<<24)  /* Don't send just this reply. */
+#define CLIENT_LUA_DEBUG (1UL<<25)  /* Run EVAL in debug mode. */
+#define CLIENT_LUA_DEBUG_SYNC (1UL<<26)  /* EVAL debugging without fork() */
+#define CLIENT_MODULE (1UL<<27) /* Non connected client used by some module. */
+#define CLIENT_NO_REPLY (1UL<<28) /* Client need no response*/
+
+#define REDIS_PROTOCOL_ERROR (1UL<<29)
+#define REDIS_OPGET_CLIENT (1UL<<30)
+#define REDIS_OPAPPLY_CLIENT (1UL<<31)
+#define REDIS_OPAPPLY_IGNORE_CMDS (1UL << 32) /* opapply ignore cmds in some situations */
+#define REDIS_INVALID_REPLOFF (1UL << 33)
+#define REDIS_FAKECLIENT (1UL << 34) /* Fake client used by loading AOF from disk */
+#define REDIS_AOF_PSYNCING (1UL<<35)
 
 /* Client block type (btype field in client structure)
  * if CLIENT_BLOCKED flag is set. */
@@ -312,6 +320,11 @@ typedef long long mstime_t; /* millisecond time type. */
 
 /* Synchronous read timeout - slave side */
 #define CONFIG_REPL_SYNCIO_TIMEOUT 5
+
+/* sync command read/write type */
+#define SYNC_CMD_READ (1<<0)
+#define SYNC_CMD_WRITE (1<<1)
+#define SYNC_CMD_FULL (SYNC_CMD_READ|SYNC_CMD_WRITE)
 
 /* List related stuff */
 #define LIST_HEAD 0
@@ -591,7 +604,7 @@ typedef struct redisObject {
     unsigned encoding:4;
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
-                            * and most significant 16 bits decreas time). */
+                            * and most significant 16 bits access time). */
     int refcount;
     void *ptr;
 } robj;
@@ -739,7 +752,7 @@ typedef struct client {
     time_t ctime;           /* Client creation time. */
     time_t lastinteraction; /* Time of the last interaction, used for timeout */
     time_t obuf_soft_limit_reached_time;
-    int flags;              /* Client flags: CLIENT_* macros. */
+    uint64_t flags;              /* Client flags: CLIENT_* macros. */
     int authenticated;      /* When requirepass is non-NULL. */
     int replstate;          /* Replication state if this is a slave. */
     int repl_put_online_on_ack; /* Install slave write handler on ACK. */
@@ -771,6 +784,17 @@ typedef struct client {
     /* Response buffer */
     int bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
+
+    /* aof psync */
+    long long repl_ack_next_opid;
+    long long reploff_before_syncreploff;
+
+    /* opget client data retrieving state */
+    struct opGetClientState *opget_client_state;
+
+    /* opapply */
+    long long opapply_src_serverid;
+    long long opapply_src_opid;
 } client;
 
 struct saveparam {
@@ -798,6 +822,7 @@ struct sharedObjectsStruct {
     *mbulkhdr[OBJ_SHARED_BULKHDR_LEN], /* "*<value>\r\n" */
     *bulkhdr[OBJ_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */
     sds minstring, maxstring;
+    robj *opinfo, *oplogheader, *ignored;
 };
 
 /*memcached text shared objects*/
@@ -928,6 +953,9 @@ struct clusterState;
 #define CHILD_INFO_TYPE_RDB 0
 #define CHILD_INFO_TYPE_AOF 1
 
+#include "redis_oplog.h"
+#include "aof_buf_queue.h"
+
 struct redisServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
@@ -990,8 +1018,8 @@ struct redisServer {
     off_t loading_process_events_interval_bytes;
     /* Fast pointers to often looked up command */
     struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,
-                        *rpopCommand, *sremCommand, *execCommand, *expireCommand,
-                        *pexpireCommand;
+        *rpopCommand, *sremCommand, *execCommand, *expireCommand,
+        *pexpireCommand, *opinfoCommand, *pingCommand, *replconfCommand;
     /* Fields used only for stats */
     time_t stat_starttime;          /* Server start time */
     long long stat_numcommands;     /* Number of processed commands */
@@ -1067,8 +1095,8 @@ struct redisServer {
     int aof_lastbgrewrite_status;   /* C_OK or C_ERR */
     unsigned long aof_delayed_fsync;  /* delayed AOF fsync() counter */
     int aof_rewrite_incremental_fsync;/* fsync incrementally while rewriting? */
-    int aof_last_write_status;      /* C_OK or C_ERR */
-    int aof_last_write_errno;       /* Valid if aof_last_write_status is ERR */
+    volatile int aof_last_write_status;      /* C_OK or C_ERR */
+    volatile int aof_last_write_errno;       /* Valid if aof_last_write_status is ERR */
     int aof_load_truncated;         /* Don't stop on unexpected AOF EOF. */
     int aof_use_rdb_preamble;       /* Use RDB preamble on AOF rewrites. */
     /* AOF pipes used to communicate between parent and child during rewrite. */
@@ -1183,8 +1211,8 @@ struct redisServer {
     unsigned long long maxmemory;   /* Max number of memory bytes to use */
     int maxmemory_policy;           /* Policy for key eviction */
     int maxmemory_samples;          /* Pricision of random sampling */
-    unsigned int lfu_log_factor;    /* LFU logarithmic counter factor. */
-    unsigned int lfu_decay_time;    /* LFU counter decay factor. */
+    int lfu_log_factor;             /* LFU logarithmic counter factor. */
+    int lfu_decay_time;             /* LFU counter decay factor. */
     /* Blocked clients */
     unsigned int bpop_blocked_clients; /* Number of clients blocked by lists */
     list *unblocked_clients; /* list of clients to unblock before next loop */
@@ -1264,6 +1292,66 @@ struct redisServer {
     pthread_mutex_t lruclock_mutex;
     pthread_mutex_t next_client_id_mutex;
     pthread_mutex_t unixtime_mutex;
+
+    /*** aof binlog ***/
+    off_t aof_max_size; /* AOF maximum size per file */
+    long long last_bgsave_aof_total_size; /* aof total size of last bgsave */
+    size_t last_cron_bgsave_mem_use; /* memory usage of last cron bgsave */
+    long long aof_total_size; /* total amount of aof since start */
+    int cron_bgsave_rewrite_perc; /* cron bgsave if % growth is > M and... */
+    off_t aof_position_stored; /* aof position stored in rdb.index */
+    int auto_cron_bgsave_state; /* 0:close 1:open */
+    int auto_purge_aof; /* auto delete aof which is useless after bgsave */
+    time_t restore_timestamp;
+    int aof_last_open_status; /* C_OK or C_ERR */
+    off_t aof_inc_from_last_cron_bgsave; /* aof increment
+                                          * from last cron bgsave */
+    off_t cron_bgsave_rewrite_min_size; /* the increment of aof file
+                                         * is at least N bytes. */
+
+    /*** aof async write ***/
+    aofQueue *aof_queue; /* AOF buf queue */
+    size_t aof_buf_limit; /* Max total buf size in aof_queue */
+    int rdb_save_incremental_fsync; /* fsync incrementally while rdb saving? */
+
+    /*** aof psync(LBR) ***/
+    struct bioFindOffsetRes *aof_psync_slave_offset;
+    int do_aof_psync_send;
+    char *aof_psync_cur_reading_name;
+    int aof_psync_state;
+    char current_master_runid[CONFIG_RUN_ID_SIZE+1];
+    char last_master_runid[CONFIG_RUN_ID_SIZE+1];
+    long long last_opid_synced_from_master;
+    struct replConfigSavedInfo *rsi_config; /* saved replcation info in config */
+    long long second_replid_opid;
+    /* bio thread state for finding aof offset by opid */
+    list *bio_find_offset_results; /* results of bio find offset thread,
+                                    * it's a container for main thread
+                                    * to consume */
+    struct bioFindOffsetRes *bio_find_offset_res; /* shared obj between main thread
+                                            * and bio find offset thread */
+    long long repl_master_initial_opid; /* Master aof PSYNC opid. */
+    /* Master full resync applied info */
+    char repl_master_initial_applied_info[REDIS_SYNC_REPLY_SIZE];
+    int repl_version; /* replication version between master and slave */
+    int repl_master_aof_psyncing_state;
+
+    /*** aof binlog stream(on BLS) ***/
+    long long server_id; /* unique id of redis-server */
+    long long min_valid_opid; /* the min opid which still save in aof */
+    /* opget client states */
+    list *opget_client_list; /* list of opget clients */
+    int opget_max_count;
+    int opget_master_min_slaves;
+    /* opdel */
+    int opdel_source_timeout;
+    dict *opdel_source_opid_dict; /* (opdel source name)
+                                   * -> (opid that can be deleted to) */
+    long long next_opid; /* id of every single redis operation,
+                          * continuous and strictly increasing */
+    /* opapply */
+    dict *src_serverid_applied_opid_dict; /* (source server id)
+                                           * -> (applied opid) */
 };
 
 typedef struct pubsubPattern {
@@ -1410,9 +1498,12 @@ void redisSetProcTitle(char *title);
 
 /* networking.c -- Networking and Client related operations */
 client *createClient(int fd);
+struct client *createFakeClient(void);
 void closeTimedoutClients(void);
 void freeClient(client *c);
 void freeClientAsync(client *c);
+void freeFakeClientArgv(struct client *c);
+void freeFakeClient(struct client *c);
 void resetClient(client *c);
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask);
 void *addDeferredMultiBulkLength(client *c);
@@ -1558,7 +1649,8 @@ ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout);
 ssize_t syncReadLine(int fd, char *ptr, ssize_t size, long long timeout);
 
 /* Replication */
-void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc);
+void replicationFeedSlaves(client *c, struct redisCommand *cmd, list *slaves,
+                           int dictid, robj **argv, int argc);
 void replicationFeedSlavesFromMasterStream(list *slaves, char *buf, size_t buflen);
 void replicationFeedMonitors(client *c, list *monitors, int dictid, robj **argv, int argc);
 void updateSlavesWaitingBgsave(int bgsaveerr, int type);
@@ -1586,6 +1678,11 @@ void clearReplicationId2(void);
 void chopReplicationBacklog(void);
 void replicationCacheMasterUsingMyself(void);
 void feedReplicationBacklog(void *ptr, size_t len);
+char *sendSynchronousCommand(int flags, int fd, ...);
+void replicationDiscardCachedMaster(void);
+void putSlaveOnline(client *slave);
+void createReplicationBacklog(void);
+void shiftReplicationId(void);
 
 /* Generic persistence functions */
 void startLoading(FILE *fp);
@@ -1595,10 +1692,12 @@ void stopLoading(void);
 /* RDB persistence */
 #include "rdb.h"
 int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi);
+void loadDataFromDisk(void);
 
 /* AOF persistence */
 void flushAppendOnlyFile(int force);
-void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc);
+void feedAppendOnlyFile(client *c, struct redisCommand *cmd, int dictid,
+                        robj **argv, int argc, int del_type);
 void aofRemoveTempFile(pid_t childpid);
 int rewriteAppendOnlyFileBackground(void);
 int loadAppendOnlyFile(char *filename);
@@ -1688,7 +1787,8 @@ struct redisCommand *lookupCommandOrOriginal(sds name);
 struct memcachedCommand *lookupMemcachedCommand(sds name);
 struct memcachedCommand *lookupMemcachedCommandByCString(char *name);
 void call(client *c, int flags);
-void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int flags);
+void propagate(client *c, struct redisCommand *cmd, int dbid, robj **argv,
+               int argc, int flags);
 void alsoPropagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int target);
 void forceCommandPropagation(client *c, int flags);
 void preventCommandPropagation(client *c);
@@ -1785,7 +1885,7 @@ int rewriteConfig(char *path);
 
 /* db.c -- Keyspace access API */
 int removeExpire(redisDb *db, robj *key);
-void propagateExpire(redisDb *db, robj *key, int lazy);
+void propagateExpire(redisDb *db, robj *key, int lazy, int del_type);
 int expireIfNeeded(redisDb *db, robj *key);
 long long getExpire(redisDb *db, robj *key);
 void setExpire(client *c, redisDb *db, robj *key, long long when);
@@ -1864,6 +1964,7 @@ void scriptingInit(int setup);
 int ldbRemoveChild(pid_t pid);
 void ldbKillForkedSessions(void);
 int ldbPendingChildren(void);
+sds luaCreateFunction(client *c, lua_State *lua, robj *body);
 
 /* Blocked clients */
 void processUnblockedClients(void);
@@ -1885,6 +1986,7 @@ void evictionPoolAlloc(void);
 #define LFU_INIT_VAL 5
 unsigned long LFUGetTimeInMinutes(void);
 uint8_t LFULogIncr(uint8_t value);
+unsigned long LFUDecrAndReturn(robj *o);
 
 /* Keys hashing / comparison functions for dict.c hash tables. */
 uint64_t dictSdsHash(const void *key);
