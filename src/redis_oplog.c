@@ -1588,7 +1588,7 @@ void revertOpidIfNeeded(void) {
 
 void activeFullResyncOnProtocolErr(client *c){
     /* if bad protocol cmds received from master, slave go full resync */
-    if (c->flags & REDIS_PROTOCOL_ERROR) {
+    if (c->flags & REDIS_PROTOCOL_ERROR) { /* setProtocolError() */
         server.next_opid = LLONG_MIN;
         if (server.master) {
             server.master->read_reploff = server.master->reploff = LLONG_MAX;
@@ -2957,10 +2957,7 @@ senderr:
 }
 
 int ignoreNewLineOnPsyncing(client *slave) {
-    if (server.aof_psync_slave_offset &&
-        server.aof_psync_slave_offset->c == slave) {
-        return C_OK;
-    }
+    if (masterCheckAofPsyncingState(slave) == C_OK) return C_OK;
 
     return C_ERR;
 }

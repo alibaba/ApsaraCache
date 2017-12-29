@@ -1319,9 +1319,6 @@ struct redisServer {
     int do_aof_psync_send;
     char *aof_psync_cur_reading_name;
     int aof_psync_state;
-    char current_master_runid[CONFIG_RUN_ID_SIZE+1];
-    char last_master_runid[CONFIG_RUN_ID_SIZE+1];
-    long long last_opid_synced_from_master;
     struct replConfigSavedInfo *rsi_config; /* saved replcation info in config */
     long long second_replid_opid;
     /* bio thread state for finding aof offset by opid */
