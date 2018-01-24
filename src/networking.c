@@ -1048,6 +1048,7 @@ void resetClient(client *c) {
      * to the next command will be sent, but set the flag if the command
      * we just processed was "CLIENT REPLY SKIP". */
     c->flags &= ~CLIENT_REPLY_SKIP;
+    c->flags &= ~CLIENT_NO_REPLY;
     if (c->flags & CLIENT_REPLY_SKIP_NEXT) {
         c->flags |= CLIENT_REPLY_SKIP;
         c->flags &= ~CLIENT_REPLY_SKIP_NEXT;
