@@ -207,6 +207,8 @@ void replyMemcachedBinaryError(client *c, memcachedBinaryResponseStatus err,  co
         char *start = buf + sizeof(memcachedBinaryResponseHeader);
         memcpy(start, errstr, len);
     }
+    /* when meet error, error info response should be send */
+    c->flags &= ~CLIENT_NO_REPLY;
     addReplyStringMemcached(c, buf, sizeof(memcachedBinaryResponseHeader) + len);
 }
 
