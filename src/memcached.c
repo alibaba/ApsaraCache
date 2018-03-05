@@ -255,7 +255,9 @@ void getMemcachedCommand(client *c) {
             replyMemcachedBinaryHeaderForGetOrTouch(c, NULL, 0, valuelen, getMemcachedValueFlags(o), 1);
             addReplyStringMemcached(c, getMemcachedValuePtr(o), valuelen);
         } else {
-            replyMemcachedBinaryHeaderForGetOrTouch(c, NULL, 0, 0, 0, 0);
+            if (!(c->flags & CLIENT_NO_REPLY)) {
+                replyMemcachedBinaryHeaderForGetOrTouch(c, NULL, 0, 0, 0, 0);
+            }
         }
     }
 }
@@ -802,11 +804,14 @@ void gatMemcachedCommand(client *c) {
     expire = (unsigned long)c->argv[2]->ptr;
     o = lookupKeyRead(c->db, c->argv[1]);
     if (!o) {
-        replyMemcachedBinaryHeaderForGetOrTouch(c, NULL, 0, 0, 0, 0);
+        if (!(c->flags & CLIENT_NO_REPLY)) {
+            replyMemcachedBinaryHeaderForGetOrTouch(c, NULL, 0, 0, 0, 0);
+        }
         return;
     }
     /* reply value */
     c->binary_header.request.cas = getMemcachedValueCas(o);
+    c->flags &= ~CLIENT_NO_REPLY;
     replyMemcachedBinaryHeaderForGetOrTouch(c, NULL, 0, getMemcachedValueLength(o), getMemcachedValueFlags(o), 1);
     addReplyStringMemcached(c, getMemcachedValuePtr(o), getMemcachedValueLength(o));
     /* delete the key immediately */

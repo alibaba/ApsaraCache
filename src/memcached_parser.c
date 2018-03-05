@@ -1584,14 +1584,12 @@ void replyMemcachedBinaryHeaderForGetOrTouch(client *c, char *key, const size_t 
         addReplyStringMemcached(c, buf, needlen);
     } else {
         if (key && nkey > 0) {
-            size_t needlen = BIN_GET_RES_HEADER_LEN + nkey;
+#define BIN_MEM_BIN_RES_HEADER_LEN sizeof(memcachedBinaryResponseHeader)
+            size_t needlen = BIN_MEM_BIN_RES_HEADER_LEN + nkey;
             char buf[needlen];
             addMemcachedBinaryHeader(c, MEMCACHED_BINARY_RESPONSE_KEY_ENOENT,
-                    BIN_GET_RES_EXTRA_LEN, nkey, nkey + BIN_GET_RES_EXTRA_LEN, buf);
-            /* add the flags */
-            rsp = (memcachedBinaryResponseGet *)buf;
-            rsp->message.body.flags = htonl(flags);
-            memcpy((char *)buf + BIN_GET_RES_HEADER_LEN, key, nkey);
+                    0, nkey, nkey, buf);
+            memcpy((char *)buf + BIN_MEM_BIN_RES_HEADER_LEN, key, nkey);
             addReplyStringMemcached(c, buf, needlen);
         } else {
             replyMemcachedBinaryError(c, MEMCACHED_BINARY_RESPONSE_KEY_ENOENT,
