@@ -2518,7 +2518,7 @@ int processCommand(client *c) {
         !(c->flags & CLIENT_LUA &&
           server.lua_caller->flags & CLIENT_MASTER) &&
         !(c->cmd->getkeys_proc == NULL && c->cmd->firstkey == 0 &&
-          c->cmd->proc != execCommand))
+          c->cmd->proc != execCommand) && (c->reqtype == PROTO_REQ_INLINE || c->reqtype == PROTO_REQ_MULTIBULK))
     {
         int hashslot;
         int error_code;
