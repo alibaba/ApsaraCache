@@ -1652,8 +1652,8 @@ static uint64_t incrDecrMemcachedSetValue(const uint64_t cas, const uint32_t fla
         o->ptr = sdsMakeRoomFor(o->ptr, total_len - sdslen(o->ptr));
         sdsIncrLen(o->ptr, total_len - sdslen(o->ptr));
     } else { /* storage is smaller */
-        memset(getMemcachedValuePtr(o) + len, ' ', sdslen(o->ptr) - total_len);
-    }
+    	sdsrange(o->ptr, 0, total_len - 1);
+	}
 
     setMemcachedValueCas(o, cas);
     setMemcachedValueFlags(o, flags);
