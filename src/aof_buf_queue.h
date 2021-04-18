@@ -40,6 +40,10 @@
 #include "msqueue.h"
 #include "util.h"
 
+#ifdef __APPLE__
+#define pthread_yield sched_yield
+#endif
+
 #define REDIS_AOF_BUF_QUEUE_DEFAULT_LIMIT (1 << 30)
 #define REDIS_AOF_BUF_QUEUE_MIN_LIMIT (256*1024*1024)
 #define AOF_BIO_LATENCY_LOG_RATE_US (30*1000*1000) //30 seconds

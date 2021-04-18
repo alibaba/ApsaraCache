@@ -1,5 +1,6 @@
-/*
- * Copyright (c) 2017, Alibaba Group Holding Limited
+/* pthread spinklock macos implementation
+ *
+ * Copyright (c) 2019-2021, wei.kukey <wei.kukey at gmail dot com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,34 +27,46 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "pthread_spinlock.h"
+#include <errno.h>
+#include <sched.h>
 
-#ifndef __MSQUEUE_H__
-#define __MSQUEUE_H__
-#include <pthread.h>
-#ifdef __APPLE__
-    #include "pthread_spinlock.h"
-#endif
+#define UNUSED(V) ((void) V)
 
-typedef struct queueNode {
-    struct queueNode *next;
-} queueNode;
+int pthread_spin_init(pthread_spinlock_t *lock, int pshared) {
+    __asm__ __volatile__ ("" ::: "memory");
+    UNUSED(pshared);
+    *lock = 0;
+    return 0;
+}
 
-typedef struct queue {
-    queueNode *head;
-    pthread_spinlock_t head_lock;
+int pthread_spin_destroy(pthread_spinlock_t *lock) {
+    UNUSED(lock);
+    return 0;
+}
 
-    queueNode *tail;
-    pthread_spinlock_t tail_lock;
+int pthread_spin_lock(pthread_spinlock_t *lock) {
+    while (1) {
+        int i;
+        for (i=0; i < 10000; i++) {
+            if (__sync_bool_compare_and_swap(lock, 0, 1)) {
+                return 0;
+            }
+        }
+        sched_yield();
+    }
+}
 
-    queueNode divider;
-} queue;
+int pthread_spin_trylock(pthread_spinlock_t *lock) {
+    if (__sync_bool_compare_and_swap(lock, 0, 1)) {
+        return 0;
+    }
+    return EBUSY;
+}
 
-queue *queueInit(queue *q);
+int pthread_spin_unlock(pthread_spinlock_t *lock) {
+    __asm__ __volatile__ ("" ::: "memory");
+    *lock = 0;
+    return 0;
+}
 
-queue *queueCreate();
-
-void queuePush(queue *q, queueNode *node);
-queueNode *queuePop(queue *q);
-
-void queueSetHead(queue *q, queueNode *node);
-#endif

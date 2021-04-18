@@ -1,5 +1,6 @@
-/*
- * Copyright (c) 2017, Alibaba Group Holding Limited
+/* pthread spinklock macos implementation
+ *
+ * Copyright (c) 2019-2021, wei.kukey <wei.kukey at gmail dot com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,34 +27,15 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef KCC_REDIS_PTHREAD_SPINLOCK_H
+#define KCC_REDIS_PTHREAD_SPINLOCK_H
 
-#ifndef __MSQUEUE_H__
-#define __MSQUEUE_H__
-#include <pthread.h>
-#ifdef __APPLE__
-    #include "pthread_spinlock.h"
-#endif
+typedef int pthread_spinlock_t;
 
-typedef struct queueNode {
-    struct queueNode *next;
-} queueNode;
+int pthread_spin_init(pthread_spinlock_t *lock, int pshared);
+int pthread_spin_destroy(pthread_spinlock_t *lock);
+int pthread_spin_lock(pthread_spinlock_t *lock);
+int pthread_spin_trylock(pthread_spinlock_t *lock);
+int pthread_spin_unlock(pthread_spinlock_t *lock);
 
-typedef struct queue {
-    queueNode *head;
-    pthread_spinlock_t head_lock;
-
-    queueNode *tail;
-    pthread_spinlock_t tail_lock;
-
-    queueNode divider;
-} queue;
-
-queue *queueInit(queue *q);
-
-queue *queueCreate();
-
-void queuePush(queue *q, queueNode *node);
-queueNode *queuePop(queue *q);
-
-void queueSetHead(queue *q, queueNode *node);
-#endif
+#endif //KCC_REDIS_PTHREAD_SPINLOCK_H
