@@ -28,6 +28,21 @@
 #include "server.h"
 #include "endianconv.h"
 
+#ifdef __APPLE__
+void *memrchr(char *s,int c,int n) {
+    char *end = s + n;
+
+    do {
+        --end;
+        if (c == (int)(*end)) {
+            return end;
+        }
+    } while(s != end);
+
+    return NULL;
+}
+#endif
+
 extern void addCommandStats(client *c);
 extern void setProtocolError(const char *errstr, client *c, int pos);
 extern int time_independent_strcmp(char *a, char *b);

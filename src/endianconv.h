@@ -52,8 +52,10 @@ uint64_t intrev64(uint64_t v);
 #define intrev16ifbe(v) (v)
 #define intrev32ifbe(v) (v)
 #define intrev64ifbe(v) (v)
+#ifndef __APPLE__
 #define ntohll(v) intrev64(v)
 #define htonll(v) intrev64(v)
+#endif
 #else
 #define memrev16ifbe(p) memrev16(p)
 #define memrev32ifbe(p) memrev32(p)
