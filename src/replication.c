@@ -1970,7 +1970,7 @@ void replicationSetMaster(char *ip, int port) {
     server.repl_down_since = 0;
 
     /* split aof after HA */
-    aofSplit(1, 1);
+    //aofSplit(1, 1);
 }
 
 /* Cancel replication, setting the instance as a master itself. */
@@ -2001,7 +2001,7 @@ void replicationUnsetMaster(void) {
     server.slaveseldb = -1;
 
     /* split aof after HA */
-    aofSplit(1, 1);
+    //aofSplit(1, 1);
 }
 
 /* This function is called when the slave lose the connection with the
