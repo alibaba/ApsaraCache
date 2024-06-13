@@ -30,6 +30,9 @@
 #ifndef __MSQUEUE_H__
 #define __MSQUEUE_H__
 #include <pthread.h>
+#ifdef __APPLE__
+    #include "pthread_spinlock.h"
+#endif
 
 typedef struct queueNode {
     struct queueNode *next;

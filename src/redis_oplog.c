@@ -348,8 +348,13 @@ void cronBgsave(void) {
         if (growth >= server.cron_bgsave_rewrite_perc ||
             (server.maxmemory && (unsigned)server.aof_inc_from_last_cron_bgsave
              > server.maxmemory * server.cron_bgsave_rewrite_perc / 100)) {
+            #if defined(__APPLE__)
+            serverLog(LL_NOTICE,"Starting cron bgsave on %lld%% (%lld/%lld) aof growth",
+                     growth, server.aof_inc_from_last_cron_bgsave, base);
+            #elif (defined(__linux__) && defined(__GLIBC__))
             serverLog(LL_NOTICE,"Starting cron bgsave on %lld%% (%ld/%lld) aof growth",
                      growth, server.aof_inc_from_last_cron_bgsave, base);
+            #endif
             rdbSaveInfo rsi, *rsiptr;
             rsiptr = rdbPopulateSaveInfo(&rsi);
             rdbSaveBackground(server.rdb_filename, rsiptr);
@@ -521,8 +526,13 @@ long long getAofFirstOpid(char *filename) {
     if (!strcasecmp("opinfo", argv[0])) {
         redisOplogHeader *loaded_header = (redisOplogHeader *)argv[1];
         long long tmp_opid = loaded_header->opid;
+        #if defined(__APPLE__)
+        serverLog(LL_VERBOSE, "getAofFirstOpid: parsed first opid %lld in %s",
+                 loaded_header->opid, filename);
+        #elif (defined(__linux__) && defined(__GLIBC__))
         serverLog(LL_VERBOSE, "getAofFirstOpid: parsed first opid %ld in %s",
                  loaded_header->opid, filename);
+        #endif
         cleaningOfGetAofFirstOpid(argv, fp, argc);
         return tmp_opid;
     } else {
@@ -1634,19 +1644,35 @@ int writeAndFlushTmpRdbIndex(FILE *fp_tmp_rdb_index, char *filename) {
     }
 
     if(server.aof_state != AOF_OFF) {
+        #if defined(__APPLE__)
+        if(fprintf(fp_tmp_rdb_index, "%s %s %lld %lld\n", \
+                   filename, server.aof_filename, \
+                   server.aof_current_size,
+                   (server.next_opid < 1 ? 0 : server.next_opid)) < 0)
+        #elif (defined(__linux__) && defined(__GLIBC__))
         if(fprintf(fp_tmp_rdb_index, "%s %s %ld %lld\n", \
                    filename, server.aof_filename, \
                    server.aof_current_size,
-                   (server.next_opid < 1 ? 0 : server.next_opid)) < 0) {
+                   (server.next_opid < 1 ? 0 : server.next_opid)) < 0)
+        #endif
+        {
             serverLog(LL_WARNING, "Writing %s error: %s",
                      REDIS_RDB_INDEX_TMP_FILENAME, strerror(errno));
             return C_ERR;
         }
+        #if defined(__APPLE__)
+        serverLog(LL_NOTICE,
+                 "BGSAVE done, write rdb.index, rdb name: %s, aof name: %s, "
+                 "aof offset: %lld, next opid: %lld",
+                 filename, server.aof_filename, \
+                 server.aof_current_size, server.next_opid);
+        #elif (defined(__linux__) && defined(__GLIBC__))
         serverLog(LL_NOTICE,
                  "BGSAVE done, write rdb.index, rdb name: %s, aof name: %s, "
                  "aof offset: %ld, next opid: %lld",
                  filename, server.aof_filename, \
                  server.aof_current_size, server.next_opid);
+        #endif
         if (rdbSaveAppliedInfoToRdbIndex(fp_tmp_rdb_index) != C_OK) {
             return C_ERR;
         }
@@ -1813,7 +1839,11 @@ sds catExtraReplInfo(sds info) {
     info = sdscatprintf(info,
                         "aof_psyncing_state:%d\r\n"
                         "aof_psync_reading_filename:%s\r\n"
+                        #if defined(__APPLE__)
+                        "aof_psync_reading_offset:%lld\r\n"
+                        #elif (defined(__linux__) && defined(__GLIBC__))
                         "aof_psync_reading_offset:%ld\r\n"
+                        #endif
                         "next_opid:%lld\r\n"
                         "second_replid_opid:%lld\r\n",
                         (slaveCheckAofPsyncingState() == C_OK ? 1 : 0),
@@ -2453,7 +2483,7 @@ void doSendAofToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     /* Align IOBUF to multiple of 1024 */
     const int IOBUF_LEN = PROTO_IOBUF_LEN;
-    char buf[IOBUF_LEN];
+    char buf[PROTO_IOBUF_LEN];
     ssize_t nwritten, buflen;
 
     lseek(aof_psync_reading_fd, slave->repldboff, SEEK_SET);
